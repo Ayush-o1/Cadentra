@@ -1,13 +1,102 @@
-:root {
-  --bg-page: #f7f6f2;
-  --bg-surface: #ffffff;
-  --text: #1b211f;
-  --primary: #0f5c4d;
+/* Cadentra design tokens. Every colour, size and duration used elsewhere comes from here. */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
 }
 
-body {
-  margin: 0;
-  background: var(--bg-page);
-  color: var(--text);
-  font-family: system-ui, sans-serif;
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  /* Surfaces */
+  --bg-page: #f7f6f2;
+  --bg-surface: #ffffff;
+  --bg-subtle: #eeede8;
+  --bg-hover: #f3f2ed;
+  --border: #e4e1d8;
+  --border-strong: #cfcbbe;
+
+  /* Text */
+  --text: #1b211f;
+  --text-muted: #555f5b;
+  --text-faint: #6e7773;
+
+  /* Brand */
+  --primary: #0f5c4d;
+  --primary-hover: #0b4a3e;
+  --primary-soft: #e3f1ed;
+  --signal: #b4540a;
+  --signal-soft: #fbece0;
+
+  /* Status */
+  --success: #1e7b4f;
+  --success-text: #14633d;
+  --success-bg: #e4f3ea;
+  --warning: #8a5a0b;
+  --warning-text: #7a4f08;
+  --warning-bg: #fbf0d9;
+  --error: #b42318;
+  --error-text: #9a1c12;
+  --error-bg: #fce8e6;
+  --info: #2b5fa8;
+  --info-text: #244f8c;
+  --info-bg: #e6eef9;
+  --neutral-text: #4a5450;
+  --neutral-bg: #eeede8;
+
+  /* Type */
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  /* Space (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+
+  /* Elevation: only overlays float */
+  --shadow-menu: 0 6px 20px -4px rgb(27 33 31 / 0.16), 0 0 0 1px rgb(27 33 31 / 0.06);
+  --shadow-modal: 0 24px 60px -12px rgb(27 33 31 / 0.28), 0 0 0 1px rgb(27 33 31 / 0.06);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+
+  /* Layout */
+  --sidebar-width: 15.5rem;
+  --content-max: 76rem;
+  --focus-ring: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--primary);
+
+  /* Stacking */
+  --z-sidebar: 20;
+  --z-menu: 40;
+  --z-modal: 50;
+  --z-toast: 60;
 }

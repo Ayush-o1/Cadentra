@@ -8,10 +8,11 @@ import type { AuthContext } from '../types/express.js';
 
 const LAST_SEEN_REFRESH_MS = 5 * 60 * 1000;
 
-export function createRequireAuth(config: Config, db: Db): RequestHandler {
-  return async (req, _res, next) => {
+/** Looks up the session behind the request cookie. Returns null when there is no valid session. */
+export function createAuthResolver(config: Config, db: Db) {
+  return async function resolveAuth(req: Request): Promise<AuthContext | null> {
     const token = readCookie(req, config.session.cookieName);
-    if (!token) throw unauthorized();
+    if (!token) return null;
 
     const now = new Date();
     const session = await db.session.findUnique({
@@ -23,19 +24,27 @@ export function createRequireAuth(config: Config, db: Db): RequestHandler {
     const membership = session?.user.memberships[0];
     const idleDeadline = session ? session.lastSeenAt.getTime() + config.session.idleTimeoutMs : 0;
     if (!session || !membership || session.expiresAt <= now || idleDeadline <= now.getTime()) {
-      throw unauthorized();
+      return null;
     }
 
     if (now.getTime() - session.lastSeenAt.getTime() > LAST_SEEN_REFRESH_MS) {
       await db.session.update({ where: { id: session.id }, data: { lastSeenAt: now } });
     }
-
-    req.auth = {
+    return {
       userId: session.userId,
       sessionId: session.id,
       workspaceId: membership.workspaceId,
       role: membership.role,
     };
+  };
+}
+
+export function createRequireAuth(config: Config, db: Db): RequestHandler {
+  const resolveAuth = createAuthResolver(config, db);
+  return async (req, _res, next) => {
+    const auth = await resolveAuth(req);
+    if (!auth) throw unauthorized();
+    req.auth = auth;
     next();
   };
 }

@@ -2,7 +2,7 @@ import { Router, type CookieOptions, type Request, type Response } from 'express
 import type { Config } from '../../config/env.js';
 import type { Db } from '../../lib/db.js';
 import { noContent, parseId, readCookie } from '../../lib/http.js';
-import { createRequireAuth, getAuth } from '../../middleware/auth.js';
+import { createAuthResolver, createRequireAuth, getAuth } from '../../middleware/auth.js';
 import { createRateLimiter, emailKey } from '../../middleware/rate-limit.js';
 import {
   changePasswordSchema,
@@ -20,6 +20,7 @@ export function createAuthRouter(config: Config, db: Db): Router {
   const router = Router();
   const service = createAuthService(db, config);
   const requireAuth = createRequireAuth(config, db);
+  const resolveAuth = createAuthResolver(config, db);
 
   const cookieOptions: CookieOptions = {
     httpOnly: true,
@@ -61,6 +62,12 @@ export function createAuthRouter(config: Config, db: Db): Router {
     if (token) await service.logout(token);
     res.clearCookie(config.session.cookieName, cookieOptions);
     noContent(res);
+  });
+
+  // The frontend asks this on every page load. Being signed out is a normal answer, not an error.
+  router.get('/auth/session', async (req, res) => {
+    const auth = await resolveAuth(req);
+    res.json({ data: auth ? await service.identityFor(auth.userId) : null });
   });
 
   router.get('/auth/me', requireAuth, async (req, res) => {

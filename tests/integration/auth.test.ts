@@ -160,6 +160,26 @@ describe('login and logout', () => {
   });
 });
 
+describe('session probe', () => {
+  it('answers 200 with null when signed out, so page loads never log an error', async () => {
+    const res = await request(app).get('/api/v1/auth/session');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ data: null });
+    const garbage = await request(app)
+      .get('/api/v1/auth/session')
+      .set('Cookie', 'cadentra_sid=garbage');
+    expect(garbage.body).toEqual({ data: null });
+  });
+
+  it('returns the identity for a valid session', async () => {
+    const { agent, credentials } = await registerAgent(app);
+    const res = await agent.get('/api/v1/auth/session');
+    expect((res.body as { data: { user: { email: string } } }).data.user.email).toBe(
+      credentials.email,
+    );
+  });
+});
+
 describe('session validation', () => {
   it('requires authentication for protected routes', async () => {
     for (const path of ['/api/v1/auth/me', '/api/v1/workspace', '/api/v1/account/sessions']) {
