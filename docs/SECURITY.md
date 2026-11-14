@@ -31,10 +31,11 @@ Important actions write to `activity_log` (workspace created and updated, contac
 
 ## Verification performed for this release
 
-- Automated accessibility scan (axe, WCAG 2.1 A and AA) on every page and the contact dialog, which found and fixed two real problems.
-- `npm audit` for runtime and development dependencies: results are in the completion report and CI logs.
-- Secret scan of the working tree and history: results are in the completion report.
-- Headers checked against the production container with the smoke test (`scripts/smoke-test.mjs`).
+- **Automated accessibility scan** (axe, WCAG 2.1 A and AA) on every page and the contact dialog. It found two real problems (faint-text contrast, account button name), both fixed.
+- **`npm audit --omit=dev`** (what ships): 0 vulnerabilities. CI fails on high severity in production dependencies.
+- **`npm audit`** (including development tools): 7 moderate findings, all one advisory, a denial of service in `minimatch` glob matching reached through `typescript-eslint`. It affects only the local lint tooling, which never processes untrusted patterns, and is not in the production image. npm's suggested fix is a downgrade to an older `typescript-eslint`, so it was not applied. Revisit when `typescript-eslint` ships a patched `minimatch`.
+- **Secret scan** of every tracked file and of the full Git history for API-key, webhook-secret, private-key and token patterns: no matches. `.env` is ignored and was never committed.
+- **Headers and behaviour** checked against the production container with `scripts/smoke-test.mjs`.
 
 ## Known gaps
 
