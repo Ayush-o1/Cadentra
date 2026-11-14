@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+test-results
+playwright-report
+.git
+.github
+.env
+.env.*
+!.env.example
+docs
+e2e
+tests
+*.md
+src/generated

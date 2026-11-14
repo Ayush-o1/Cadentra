@@ -1,0 +1,36 @@
+# Self-hosting on a single small server: the app plus its own MySQL. Put a TLS-terminating reverse
+# proxy (Caddy, nginx, a cloud load balancer) in front, and set APP_URL to the https address.
+#   cp .env.production.example .env.production   # then fill it in
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: mysql://cadentra:${MYSQL_PASSWORD}@mysql:3306/cadentra
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: cadentra
+      MYSQL_USER: cadentra
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_0900_ai_ci']
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-p${MYSQL_ROOT_PASSWORD}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql-data:

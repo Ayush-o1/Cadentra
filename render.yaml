@@ -1,0 +1,30 @@
+# Render blueprint. Not deployed or verified: it needs a Render account and an external MySQL.
+# See docs/DEPLOYMENT.md for the full checklist and the free-tier caveats.
+services:
+  - type: web
+    name: cadentra
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RUN_WORKER
+        value: 'true'
+      - key: APP_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET
+        generateValue: true
+      - key: TICK_TOKEN
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false

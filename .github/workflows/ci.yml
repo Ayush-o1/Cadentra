@@ -41,6 +41,11 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - name: Smoke test the production build
+        run: |
+          DATABASE_URL="$TEST_DATABASE_URL" APP_SECRET="$(openssl rand -hex 32)" PORT=3300 node dist/server.js &
+          for i in $(seq 1 30); do curl -sf http://localhost:3300/healthz && break; sleep 1; done
+          node scripts/smoke-test.mjs http://localhost:3300
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm audit --omit=dev --audit-level=high
@@ -53,3 +58,10 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t cadentra:ci .
