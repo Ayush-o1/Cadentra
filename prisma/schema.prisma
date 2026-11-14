@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum WorkspaceRole {
+  owner
+  member
+}
+
+enum ConsentBasis {
+  requested_contact
+  existing_customer
+  signed_up
+  event_attendee
+  other_documented
+}
+
+enum SuppressionReason {
+  unsubscribed
+  hard_bounce
+  complaint
+  manual
+}
+
+enum CampaignStatus {
+  draft
+  scheduled
+  running
+  paused
+  completed
+  cancelled
+}
+
+enum RecipientStatus {
+  active
+  completed
+  stopped
+}
+
+enum MessageStatus {
+  scheduled
+  sending
+  accepted
+  delivered
+  bounced
+  complained
+  failed
+  skipped
+  cancelled
+}
+
+enum WebhookEventStatus {
+  processed
+  unmatched
+  ignored
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique(map: "uq_users_email") @db.VarChar(254)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(120)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  sessions    Session[]
+  memberships WorkspaceMember[]
+  campaigns   Campaign[]
+  activity    ActivityLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  tokenHash  String   @unique(map: "uq_sessions_token_hash") @map("token_hash") @db.Char(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(255)
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.DateTime(3)
+  expiresAt  DateTime @map("expires_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@index([expiresAt], map: "idx_sessions_expires_at")
+  @@map("sessions")
+}
+
+model Workspace {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(120)
+  timezone        String   @default("UTC") @db.VarChar(64)
+  senderName      String?  @map("sender_name") @db.VarChar(120)
+  senderEmail     String?  @map("sender_email") @db.VarChar(254)
+  replyToEmail    String?  @map("reply_to_email") @db.VarChar(254)
+  postalAddress   String?  @map("postal_address") @db.VarChar(500)
+  windowStartHour Int      @default(9) @map("window_start_hour") @db.TinyInt
+  windowEndHour   Int      @default(17) @map("window_end_hour") @db.TinyInt
+  weekdaysOnly    Boolean  @default(true) @map("weekdays_only")
+  dailySendLimit  Int      @default(100) @map("daily_send_limit")
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  members      WorkspaceMember[]
+  contacts     Contact[]
+  lists        ContactList[]
+  suppressions Suppression[]
+  campaigns    Campaign[]
+  activity     ActivityLog[]
+  recipients   CampaignRecipient[]
+  messages     EmailMessage[]
+  listMembers  ContactListMember[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId Int           @map("workspace_id")
+  userId      Int           @map("user_id")
+  role        WorkspaceRole @default(member)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId], map: "idx_members_user")
+  @@map("workspace_members")
+}
+
+model Contact {
+  id            Int          @id @default(autoincrement())
+  workspaceId   Int          @map("workspace_id")
+  email         String       @db.VarChar(254)
+  firstName     String?      @map("first_name") @db.VarChar(100)
+  lastName      String?      @map("last_name") @db.VarChar(100)
+  company       String?      @db.VarChar(160)
+  consentBasis  ConsentBasis @map("consent_basis")
+  consentSource String?      @map("consent_source") @db.VarChar(255)
+  consentedAt   DateTime     @map("consented_at") @db.DateTime(3)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  listLinks  ContactListMember[]
+  recipients CampaignRecipient[]
+
+  @@unique([workspaceId, email], map: "uq_contacts_ws_email")
+  @@unique([workspaceId, id], map: "uq_contacts_ws_id")
+  @@map("contacts")
+}
+
+model ContactList {
+  id          Int      @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  name        String   @db.VarChar(120)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members   ContactListMember[]
+  campaigns Campaign[]
+
+  @@unique([workspaceId, name], map: "uq_lists_ws_name")
+  @@unique([workspaceId, id], map: "uq_lists_ws_id")
+  @@map("contact_lists")
+}
+
+model ContactListMember {
+  workspaceId Int      @map("workspace_id")
+  listId      Int      @map("list_id")
+  contactId   Int      @map("contact_id")
+  addedAt     DateTime @default(now()) @map("added_at") @db.DateTime(3)
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  list      ContactList @relation(fields: [workspaceId, listId], references: [workspaceId, id], onDelete: Cascade)
+  contact   Contact     @relation(fields: [workspaceId, contactId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([listId, contactId])
+  @@index([contactId], map: "idx_list_members_contact")
+  @@index([workspaceId], map: "idx_list_members_workspace")
+  @@map("contact_list_members")
+}
+
+model Suppression {
+  id              Int               @id @default(autoincrement())
+  workspaceId     Int               @map("workspace_id")
+  email           String            @db.VarChar(254)
+  reason          SuppressionReason
+  sourceMessageId Int?              @map("source_message_id")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email], map: "uq_suppressions_ws_email")
+  @@map("suppressions")
+}
+
+model Campaign {
+  id              Int            @id @default(autoincrement())
+  workspaceId     Int            @map("workspace_id")
+  name            String         @db.VarChar(160)
+  status          CampaignStatus @default(draft)
+  listId          Int?           @map("list_id")
+  startAt         DateTime?      @map("start_at") @db.DateTime(3)
+  windowStartHour Int            @default(9) @map("window_start_hour") @db.TinyInt
+  windowEndHour   Int            @default(17) @map("window_end_hour") @db.TinyInt
+  weekdaysOnly    Boolean        @default(true) @map("weekdays_only")
+  pauseReason     String?        @map("pause_reason") @db.VarChar(255)
+  version         Int            @default(1)
+  launchedAt      DateTime?      @map("launched_at") @db.DateTime(3)
+  completedAt     DateTime?      @map("completed_at") @db.DateTime(3)
+  createdById     Int?           @map("created_by")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  list       ContactList?        @relation(fields: [workspaceId, listId], references: [workspaceId, id], onDelete: Restrict)
+  createdBy  User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  steps      CampaignStep[]
+  recipients CampaignRecipient[]
+  messages   EmailMessage[]
+
+  @@unique([workspaceId, id], map: "uq_campaigns_ws_id")
+  @@index([workspaceId, status], map: "idx_campaigns_ws_status")
+  @@index([status, startAt], map: "idx_campaigns_status_start")
+  @@map("campaigns")
+}
+
+model CampaignStep {
+  id         Int    @id @default(autoincrement())
+  campaignId Int    @map("campaign_id")
+  position   Int
+  delayDays  Int    @default(0) @map("delay_days")
+  subject    String @db.VarChar(200)
+  body       String @db.Text
+
+  campaign Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages EmailMessage[]
+
+  @@unique([campaignId, position], map: "uq_steps_campaign_position")
+  @@unique([campaignId, id], map: "uq_steps_campaign_id")
+  @@map("campaign_steps")
+}
+
+model CampaignRecipient {
+  id          Int             @id @default(autoincrement())
+  workspaceId Int             @map("workspace_id")
+  campaignId  Int             @map("campaign_id")
+  contactId   Int             @map("contact_id")
+  status      RecipientStatus @default(active)
+  stopReason  String?         @map("stop_reason") @db.VarChar(40)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign       @relation(fields: [workspaceId, campaignId], references: [workspaceId, id], onDelete: Cascade)
+  contact   Contact        @relation(fields: [workspaceId, contactId], references: [workspaceId, id], onDelete: Cascade)
+  messages  EmailMessage[]
+
+  @@unique([campaignId, contactId], map: "uq_recipients_campaign_contact")
+  @@unique([campaignId, id], map: "uq_recipients_campaign_id")
+  @@index([campaignId, status], map: "idx_recipients_campaign_status")
+  @@index([contactId], map: "idx_recipients_contact")
+  @@map("campaign_recipients")
+}
+
+model EmailMessage {
+  id                Int           @id @default(autoincrement())
+  workspaceId       Int           @map("workspace_id")
+  campaignId        Int           @map("campaign_id")
+  recipientId       Int           @map("recipient_id")
+  stepId            Int           @map("step_id")
+  toEmail           String        @map("to_email") @db.VarChar(254)
+  status            MessageStatus @default(scheduled)
+  runAt             DateTime      @map("run_at") @db.DateTime(3)
+  attempts          Int           @default(0) @db.TinyInt
+  lockedBy          String?       @map("locked_by") @db.VarChar(64)
+  lockedUntil       DateTime?     @map("locked_until") @db.DateTime(3)
+  lastError         String?       @map("last_error") @db.VarChar(500)
+  subjectSent       String?       @map("subject_sent") @db.VarChar(200)
+  provider          String?       @db.VarChar(20)
+  providerMessageId String?       @unique(map: "uq_messages_provider_id") @map("provider_message_id") @db.VarChar(100)
+  acceptedAt        DateTime?     @map("accepted_at") @db.DateTime(3)
+  deliveredAt       DateTime?     @map("delivered_at") @db.DateTime(3)
+  failedAt          DateTime?     @map("failed_at") @db.DateTime(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign          @relation(fields: [workspaceId, campaignId], references: [workspaceId, id], onDelete: Cascade)
+  recipient CampaignRecipient @relation(fields: [campaignId, recipientId], references: [campaignId, id], onDelete: Cascade)
+  step      CampaignStep      @relation(fields: [campaignId, stepId], references: [campaignId, id], onDelete: Cascade)
+
+  @@unique([recipientId, stepId], map: "uq_messages_recipient_step")
+  @@index([status, runAt], map: "idx_messages_status_run_at")
+  @@index([campaignId, status], map: "idx_messages_campaign_status")
+  @@index([workspaceId, status], map: "idx_messages_ws_status")
+  @@index([workspaceId, acceptedAt], map: "idx_messages_ws_accepted_at")
+  @@map("email_messages")
+}
+
+model WebhookEvent {
+  id                Int                @id @default(autoincrement())
+  provider          String             @db.VarChar(20)
+  providerEventId   String             @map("provider_event_id") @db.VarChar(100)
+  eventType         String             @map("event_type") @db.VarChar(60)
+  providerMessageId String?            @map("provider_message_id") @db.VarChar(100)
+  status            WebhookEventStatus
+  payload           Json?
+  receivedAt        DateTime           @default(now()) @map("received_at") @db.DateTime(3)
+  processedAt       DateTime?          @map("processed_at") @db.DateTime(3)
+
+  @@unique([provider, providerEventId], map: "uq_webhook_events_provider_event")
+  @@index([providerMessageId, status], map: "idx_webhook_events_message_status")
+  @@index([receivedAt], map: "idx_webhook_events_received_at")
+  @@map("webhook_events")
+}
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  userId      Int?     @map("user_id")
+  action      String   @db.VarChar(60)
+  entityType  String?  @map("entity_type") @db.VarChar(40)
+  entityId    Int?     @map("entity_id")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, id], map: "idx_activity_ws_id")
+  @@map("activity_log")
+}

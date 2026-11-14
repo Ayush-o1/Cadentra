@@ -1,18 +1,29 @@
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
-import { AppError, conflict, validationFailed } from '../src/lib/errors.js';
-import { errorHandler } from '../src/middleware/error-handler.js';
-import { errorBody, testConfig, testLogger } from './helpers.js';
+import { afterAll, describe, expect, it } from 'vitest';
+import { createApp } from '../../src/app.js';
+import { AppError, conflict, validationFailed } from '../../src/lib/errors.js';
+import { errorHandler } from '../../src/middleware/error-handler.js';
+import { errorBody, testConfig, testDb, testLogger } from '../helpers.js';
 
 describe('app foundation', () => {
-  const app = createApp({ config: testConfig(), logger: testLogger() });
+  const db = testDb();
+  const app = createApp({ config: testConfig(), logger: testLogger(), db });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
 
   it('answers the liveness probe', async () => {
     const res = await request(app).get('/healthz');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok' });
+  });
+
+  it('reports readiness once the database answers', async () => {
+    const res = await request(app).get('/readyz');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'ok', database: 'up' });
   });
 
   it('returns a JSON 404 for unknown routes', async () => {

@@ -4,6 +4,7 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import type { Config } from './config/env.js';
+import type { Db } from './lib/db.js';
 import type { Logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
@@ -11,11 +12,12 @@ import { createHealthRouter } from './modules/health/health.routes.js';
 export type AppDeps = {
   config: Config;
   logger: Logger;
+  db: Db;
 };
 
 const publicDir = path.join(import.meta.dirname, 'public');
 
-export function createApp({ config, logger }: AppDeps): Express {
+export function createApp({ config, logger, db }: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -59,7 +61,7 @@ export function createApp({ config, logger }: AppDeps): Express {
     }),
   );
 
-  app.use(createHealthRouter());
+  app.use(createHealthRouter(db));
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.use(notFoundHandler);
   app.use(errorHandler);
