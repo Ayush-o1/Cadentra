@@ -37,17 +37,17 @@ tests/health.test.ts    tests/errors.test.ts  tests/env.test.ts
 
 **Dependencies (to be installed with versions checked at install time).**
 
-| Package | Why |
-| --- | --- |
-| `express` | HTTP framework |
-| `zod` | Validate environment variables now, request bodies later |
-| `pino`, `pino-http` | Structured logging and request logs |
-| `helmet` | Secure headers, including CSP |
-| dev: `typescript` (6.0.x), `tsx` | Compile and run TypeScript with watch mode |
-| dev: `@types/node`, `@types/express` | Type definitions |
-| dev: `vitest`, `supertest`, `@types/supertest` | Tests |
-| dev: `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-config-prettier`, `prettier` | Lint and format |
-| dev: `pino-pretty` | Readable logs in development |
+| Package                                                                                | Why                                                      |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `express`                                                                              | HTTP framework                                           |
+| `zod`                                                                                  | Validate environment variables now, request bodies later |
+| `pino`, `pino-http`                                                                    | Structured logging and request logs                      |
+| `helmet`                                                                               | Secure headers, including CSP                            |
+| dev: `typescript` (6.0.x), `tsx`                                                       | Compile and run TypeScript with watch mode               |
+| dev: `@types/node`, `@types/express`                                                   | Type definitions                                         |
+| dev: `vitest`, `supertest`, `@types/supertest`                                         | Tests                                                    |
+| dev: `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-config-prettier`, `prettier` | Lint and format                                          |
+| dev: `pino-pretty`                                                                     | Readable logs in development                             |
 
 Not added yet: `dotenv` (Node's `--env-file` should replace it, to be confirmed), Prisma, `express-rate-limit`, `argon2`, `csv-parse`, `resend`, `svix`. Each arrives in the phase that uses it. Docker Compose arrives in Phase 2, when MySQL is first needed.
 

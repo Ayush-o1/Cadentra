@@ -129,12 +129,12 @@ A fallback for hosts where `SKIP LOCKED` is unavailable (possibly TiDB): claim w
 
 ### 7.4 Retry policy
 
-| Outcome | Classification | Action |
-| --- | --- | --- |
-| Network error, timeout, 5xx | Transient | Retry |
-| 429 | Transient | Retry after `retry-after` if present |
-| 4xx other than 429 (invalid address, unverified domain, quota exceeded) | Permanent | `failed`, no retry |
-| Lease expired while `sending` | Unknown outcome | Retry with the **same** idempotency key |
+| Outcome                                                                 | Classification  | Action                                  |
+| ----------------------------------------------------------------------- | --------------- | --------------------------------------- |
+| Network error, timeout, 5xx                                             | Transient       | Retry                                   |
+| 429                                                                     | Transient       | Retry after `retry-after` if present    |
+| 4xx other than 429 (invalid address, unverified domain, quota exceeded) | Permanent       | `failed`, no retry                      |
+| Lease expired while `sending`                                           | Unknown outcome | Retry with the **same** idempotency key |
 
 Backoff: 1 minute, 5 minutes, 30 minutes, 2 hours, then `failed` after 5 attempts. Each failure stores `last_error`. The classification is a pure function, unit-tested with a table of cases.
 
@@ -178,22 +178,22 @@ The Resend webhook secret is stored in an environment variable. It is never logg
 
 ## 9. Security approach
 
-| Risk | Control |
-| --- | --- |
-| Credential stuffing, brute force | Argon2id, rate limits on login by IP and by email, identical error messages |
-| Session theft | HttpOnly, Secure, SameSite cookies, hashed tokens in the database, revocation, idle and absolute expiry |
-| CSRF | SameSite=Lax, JSON-only writes, Origin check, reviewed against OWASP in Phase 3 |
-| Broken access control, IDOR | Workspace scoping in every repository function, composite foreign keys, 404 for foreign ids, dedicated authorization tests |
-| SQL injection | Prisma parameterisation. Raw SQL only through tagged templates with bound parameters |
-| XSS | `textContent` and an escaping helper, strict CSP through Helmet, no inline scripts |
-| Email header injection | Subject and addresses validated, newlines rejected before they reach the provider |
-| Template injection | Merge fields are a fixed allow-list substituted as plain text, not an expression language |
-| Abuse as a spam tool | Consent basis required, launch gates, daily caps, bounce circuit breaker, unsubscribe on every message |
-| Forged webhooks | Svix signature verification on the raw body, timestamp tolerance |
-| CSV upload abuse | Size cap, row cap, `text/csv` only, no formula or file handling server-side beyond parsing, per-row validation |
-| Secrets exposure | Environment variables only, validated at startup, redacted in logs, `.env` ignored by Git |
-| Dependency risk | Few dependencies, exact pins for Prisma and TypeScript, `npm audit` in CI |
-| Denial of service | Request body limits, rate limits, pagination caps, query timeouts |
+| Risk                             | Control                                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Credential stuffing, brute force | Argon2id, rate limits on login by IP and by email, identical error messages                                                |
+| Session theft                    | HttpOnly, Secure, SameSite cookies, hashed tokens in the database, revocation, idle and absolute expiry                    |
+| CSRF                             | SameSite=Lax, JSON-only writes, Origin check, reviewed against OWASP in Phase 3                                            |
+| Broken access control, IDOR      | Workspace scoping in every repository function, composite foreign keys, 404 for foreign ids, dedicated authorization tests |
+| SQL injection                    | Prisma parameterisation. Raw SQL only through tagged templates with bound parameters                                       |
+| XSS                              | `textContent` and an escaping helper, strict CSP through Helmet, no inline scripts                                         |
+| Email header injection           | Subject and addresses validated, newlines rejected before they reach the provider                                          |
+| Template injection               | Merge fields are a fixed allow-list substituted as plain text, not an expression language                                  |
+| Abuse as a spam tool             | Consent basis required, launch gates, daily caps, bounce circuit breaker, unsubscribe on every message                     |
+| Forged webhooks                  | Svix signature verification on the raw body, timestamp tolerance                                                           |
+| CSV upload abuse                 | Size cap, row cap, `text/csv` only, no formula or file handling server-side beyond parsing, per-row validation             |
+| Secrets exposure                 | Environment variables only, validated at startup, redacted in logs, `.env` ignored by Git                                  |
+| Dependency risk                  | Few dependencies, exact pins for Prisma and TypeScript, `npm audit` in CI                                                  |
+| Denial of service                | Request body limits, rate limits, pagination caps, query timeouts                                                          |
 
 A full `SECURITY.md` is written in Phase 3 and revisited in Phase 9.
 
@@ -203,12 +203,12 @@ A full `SECURITY.md` is written in Phase 3 and revisited in Phase 9.
 
 ## 11. Testing strategy
 
-| Level | Tooling | What it covers |
-| --- | --- | --- |
-| Unit | Vitest | Pure logic: state transitions, `computeRunAt`, retry classification, suppression rules, analytics maths, validators |
-| Integration | Vitest, Supertest, real MySQL | Auth, authorization across tenants, contacts and CSV import, campaign lifecycle, the claim loop, webhook processing, using `FakeProvider` |
-| End to end | Playwright | Register, import contacts, build and schedule a campaign, watch statuses change, unsubscribe |
-| Manual sandbox | Resend test addresses | `delivered@`, `bounced@`, `complained@` verify the real integration once in Phase 7 and again after deployment |
+| Level          | Tooling                       | What it covers                                                                                                                            |
+| -------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit           | Vitest                        | Pure logic: state transitions, `computeRunAt`, retry classification, suppression rules, analytics maths, validators                       |
+| Integration    | Vitest, Supertest, real MySQL | Auth, authorization across tenants, contacts and CSV import, campaign lifecycle, the claim loop, webhook processing, using `FakeProvider` |
+| End to end     | Playwright                    | Register, import contacts, build and schedule a campaign, watch statuses change, unsubscribe                                              |
+| Manual sandbox | Resend test addresses         | `delivered@`, `bounced@`, `complained@` verify the real integration once in Phase 7 and again after deployment                            |
 
 Integration tests need MySQL. Locally that is a Docker Compose service. In CI it is a GitHub Actions service container.
 

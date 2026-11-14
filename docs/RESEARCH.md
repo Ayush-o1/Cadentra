@@ -6,28 +6,28 @@ Date of research: 2026-11-14. Status: proposal, awaiting review.
 
 Every claim carries one of these labels, because the difference matters when you defend a decision in an interview.
 
-| Label | Meaning |
-| --- | --- |
-| **Verified** | I ran a command, queried a registry, or fetched the primary source during Phase 0 |
-| **Secondary** | Only seen in search-result summaries or third-party pages. Re-check before relying on it |
-| **Recommendation** | My judgement, not a fact |
-| **Not verified** | Stated from general knowledge. Must be checked before use |
+| Label              | Meaning                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| **Verified**       | I ran a command, queried a registry, or fetched the primary source during Phase 0        |
+| **Secondary**      | Only seen in search-result summaries or third-party pages. Re-check before relying on it |
+| **Recommendation** | My judgement, not a fact                                                                 |
+| **Not verified**   | Stated from general knowledge. Must be checked before use                                |
 
 ## 1. Environment audit
 
 All **Verified** by running the commands on this machine.
 
-| Item | Result | Consequence |
-| --- | --- | --- |
-| Node.js | v24.22.1 | Target Node 24 (see section 4.1) |
-| npm | 11.19.1 | Use npm. No pnpm installed, and a second package manager adds nothing here |
-| Git | 2.54.0 (Apple Git-157) | Fine |
-| Git identity | `user.name` and `user.email` are set globally | Commits will carry the global email. Check it is the one you want public |
-| MySQL | Not installed | Run MySQL in Docker (see below) |
-| Docker | CLI 29.9.3 and Compose v5.7.0 are installed, but the **daemon is not running** | Start Docker Desktop before Phase 2 |
-| Redis | 8.10.3, installed through Homebrew | Present, but not needed under the recommended design |
-| `gh` CLI | Not installed | Cannot create PRs from the terminal |
-| GitHub auth | No SSH key (`Permission denied (publickey)`), no credential helper configured | **Pushing is currently blocked.** See the repository audit |
+| Item         | Result                                                                         | Consequence                                                                |
+| ------------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Node.js      | v24.22.1                                                                       | Target Node 24 (see section 4.1)                                           |
+| npm          | 11.19.1                                                                        | Use npm. No pnpm installed, and a second package manager adds nothing here |
+| Git          | 2.54.0 (Apple Git-157)                                                         | Fine                                                                       |
+| Git identity | `user.name` and `user.email` are set globally                                  | Commits will carry the global email. Check it is the one you want public   |
+| MySQL        | Not installed                                                                  | Run MySQL in Docker (see below)                                            |
+| Docker       | CLI 29.9.3 and Compose v5.7.0 are installed, but the **daemon is not running** | Start Docker Desktop before Phase 2                                        |
+| Redis        | 8.10.3, installed through Homebrew                                             | Present, but not needed under the recommended design                       |
+| `gh` CLI     | Not installed                                                                  | Cannot create PRs from the terminal                                        |
+| GitHub auth  | No SSH key (`Permission denied (publickey)`), no credential helper configured  | **Pushing is currently blocked.** See the repository audit                 |
 
 ## 2. Repository audit
 
@@ -73,40 +73,40 @@ Across Instantly, Smartlead and lemlist the product areas repeat: lead data, out
 
 ### 4.1 Runtime and language
 
-| Finding | Label | Source |
-| --- | --- | --- |
-| Node 24 ("Krypton"): LTS from 2025-10-28, maintenance from 2026-10-20, end of life 2028-04-30 | Verified | `nodejs/Release/schedule.json` |
-| Node 26 ("Lithium"): scheduled LTS from 2026-10-28, end of life 2029-04-30. Node 22 ends 2027-04-30. Node 20 reached end of life 2026-04-30 | Verified | same file |
-| Express latest is 5.3.0, with a `latest-4` tag at 4.22.3. Express 5 requires Node 18 or later | Verified | npm registry |
-| TypeScript `latest` is **7.0.2**, but `typescript-eslint` 8.72.2 declares the peer range `typescript >=4.8.4 <6.1.0`. The newest 6.x is 6.0.3 | Verified | npm registry |
-| Zod latest is 4.6.7. Vitest latest is 5.1.0 (needs Node `^22.12 or ^24 or >=26`). ESLint latest is 10.15.0. Prettier is 3.10.1 | Verified | npm registry |
+| Finding                                                                                                                                       | Label    | Source                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------ |
+| Node 24 ("Krypton"): LTS from 2025-10-28, maintenance from 2026-10-20, end of life 2028-04-30                                                 | Verified | `nodejs/Release/schedule.json` |
+| Node 26 ("Lithium"): scheduled LTS from 2026-10-28, end of life 2029-04-30. Node 22 ends 2027-04-30. Node 20 reached end of life 2026-04-30   | Verified | same file                      |
+| Express latest is 5.3.0, with a `latest-4` tag at 4.22.3. Express 5 requires Node 18 or later                                                 | Verified | npm registry                   |
+| TypeScript `latest` is **7.0.2**, but `typescript-eslint` 8.72.2 declares the peer range `typescript >=4.8.4 <6.1.0`. The newest 6.x is 6.0.3 | Verified | npm registry                   |
+| Zod latest is 4.6.7. Vitest latest is 5.1.0 (needs Node `^22.12 or ^24 or >=26`). ESLint latest is 10.15.0. Prettier is 3.10.1                | Verified | npm registry                   |
 
 **Recommendation:** use Node 24 (your installed version, supported to April 2028, accepted by every dependency I checked). Node 26 is the newest LTS line on the schedule, but I have not checked that hosting providers offer it, so I would not adopt it yet. Pin **TypeScript 6.0.x**, because the current lint toolchain does not support TypeScript 7.
 
 ### 4.2 Database access
 
-| Finding | Label | Source |
-| --- | --- | --- |
-| Prisma's npm `latest` tag points to `8.0.0-rc.33`, a **release candidate**. The `prev` tag is 7.10.1. `@prisma/client` 7.10.1 is the stable line | Verified | npm registry |
-| Prisma's docs state "Prisma ORM 7 remains fully supported". The index describes Prisma 8 as "a ground-up TypeScript rewrite" | Verified | `prisma.io/docs/llms.txt` |
-| In Prisma 7, MySQL uses `@prisma/adapter-mariadb` (the `mariadb` driver) with `prisma.config.ts` holding `datasource.url`. `prisma migrate dev` is fully supported | Verified | Prisma v7 MySQL docs page |
-| `@prisma/adapter-mysql` does not exist on npm | Verified | npm registry returned an error |
-| Prisma cannot express CHECK constraints, and a locking read such as `FOR UPDATE SKIP LOCKED` needs raw SQL | Not verified | General knowledge. Confirm in Phase 2 |
-| `mysql2` 3.24.6 and Kysely 0.29.9 are current (Kysely needs Node 22 or later) | Verified | npm registry |
+| Finding                                                                                                                                                            | Label        | Source                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------- |
+| Prisma's npm `latest` tag points to `8.0.0-rc.33`, a **release candidate**. The `prev` tag is 7.10.1. `@prisma/client` 7.10.1 is the stable line                   | Verified     | npm registry                          |
+| Prisma's docs state "Prisma ORM 7 remains fully supported". The index describes Prisma 8 as "a ground-up TypeScript rewrite"                                       | Verified     | `prisma.io/docs/llms.txt`             |
+| In Prisma 7, MySQL uses `@prisma/adapter-mariadb` (the `mariadb` driver) with `prisma.config.ts` holding `datasource.url`. `prisma migrate dev` is fully supported | Verified     | Prisma v7 MySQL docs page             |
+| `@prisma/adapter-mysql` does not exist on npm                                                                                                                      | Verified     | npm registry returned an error        |
+| Prisma cannot express CHECK constraints, and a locking read such as `FOR UPDATE SKIP LOCKED` needs raw SQL                                                         | Not verified | General knowledge. Confirm in Phase 2 |
+| `mysql2` 3.24.6 and Kysely 0.29.9 are current (Kysely needs Node 22 or later)                                                                                      | Verified     | npm registry                          |
 
 **Recommendation:** Prisma **7.10.x pinned exactly**, because you already know Prisma and its generated types are a good way to learn TypeScript. Do not follow `latest`, since that is the release candidate. Hand-edit migration SQL for anything Prisma cannot express, and use `$queryRaw` for the queue claim and analytics. The serious alternative is Kysely plus plain SQL migrations. See DECISIONS D-04.
 
 ### 4.3 Background jobs: BullMQ and Redis versus a MySQL-backed queue
 
-| Finding | Label | Source |
-| --- | --- | --- |
-| BullMQ's production checklist: enable Redis persistence (AOF recommended), set `maxmemory-policy` to `noeviction`, auto-reconnect, log errors, shut workers down gracefully on SIGINT and SIGTERM, remove finished jobs | Verified | docs.bullmq.io "Going to production" |
-| Job `data` is stored in clear text in Redis | Verified | same page |
-| A worker killed mid-job leaves the job "stalled", and it is picked up after roughly 30 seconds by default | Verified | same page |
-| BullMQ 6.7.6 is current. Its docs now list a **PostgreSQL backend**. There is no MySQL backend | Verified | npm registry and docs navigation |
-| MySQL 8.x supports `SELECT ... FOR UPDATE SKIP LOCKED`. A locked row is removed from the result set, and the manual says it "may be used to avoid lock contention when multiple sessions access the same queue-like table" | Verified | MySQL 8.4 manual, "Locking Reads" |
-| The same manual warns that SKIP LOCKED returns "an inconsistent view of the data" and is "not suitable for general transactional work" | Verified | same page |
-| TiDB supports `SELECT FOR UPDATE`. I could **not** confirm `SKIP LOCKED` support | Secondary / Not verified | search results only |
+| Finding                                                                                                                                                                                                                    | Label                    | Source                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------ |
+| BullMQ's production checklist: enable Redis persistence (AOF recommended), set `maxmemory-policy` to `noeviction`, auto-reconnect, log errors, shut workers down gracefully on SIGINT and SIGTERM, remove finished jobs    | Verified                 | docs.bullmq.io "Going to production" |
+| Job `data` is stored in clear text in Redis                                                                                                                                                                                | Verified                 | same page                            |
+| A worker killed mid-job leaves the job "stalled", and it is picked up after roughly 30 seconds by default                                                                                                                  | Verified                 | same page                            |
+| BullMQ 6.7.6 is current. Its docs now list a **PostgreSQL backend**. There is no MySQL backend                                                                                                                             | Verified                 | npm registry and docs navigation     |
+| MySQL 8.x supports `SELECT ... FOR UPDATE SKIP LOCKED`. A locked row is removed from the result set, and the manual says it "may be used to avoid lock contention when multiple sessions access the same queue-like table" | Verified                 | MySQL 8.4 manual, "Locking Reads"    |
+| The same manual warns that SKIP LOCKED returns "an inconsistent view of the data" and is "not suitable for general transactional work"                                                                                     | Verified                 | same page                            |
+| TiDB supports `SELECT FOR UPDATE`. I could **not** confirm `SKIP LOCKED` support                                                                                                                                           | Secondary / Not verified | search results only                  |
 
 **Recommendation:** a **MySQL-backed queue**, where the `email_messages` table is the queue. Reasons:
 
@@ -121,19 +121,19 @@ Costs: polling latency, load on the primary database, and a more hand-written re
 
 All **Verified** from Resend's own documentation pages fetched on 2026-11-14 unless marked.
 
-| Finding | Detail |
-| --- | --- |
-| Acceptable Use Policy | Prohibits "sending unsolicited messages of any kind, including cold outreach, purchased lists, or scraped contact data". All mail must go to recipients who have "explicitly opted in". Bulk senders must include a valid address and company name, disclose why they are contacting the recipient, and honour opt-outs within 7 days |
-| Account thresholds | Complaint rate must be lower than **0.08%**. Bounce rate must be lower than **4%**. Otherwise the account may be shut down without warning |
-| Pricing and limits | Free plan: 3,000 emails per month and **100 per day**. Rate limit: **10 requests per second per team**, with `429` and `retry-after` when exceeded |
-| Idempotency | `Idempotency-Key` header on `POST /emails`. Up to 256 characters. Remembered for **24 hours**. A repeated request returns the original response without sending again |
-| Webhooks | Signed through Svix. Verify with `resend.webhooks.verify` or the `svix` package using the **raw body** plus the `svix-id`, `svix-timestamp` and `svix-signature` headers. Events can be replayed from the dashboard |
-| Events | `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.failed`, `email.suppressed`, `email.opened`, `email.clicked`, `email.scheduled` |
-| Event meaning | `email.sent` means "API request was successful" and Resend will attempt delivery. `email.delivered` means the recipient's mail server accepted it. `email.bounced` means permanently rejected |
-| Test addresses | `delivered@resend.dev`, `bounced@resend.dev`, `complained@resend.dev`, `suppressed@resend.dev`. Labels work, for example `delivered+user1@resend.dev` |
-| Blocked domains | Sending to `example.com` or `test.com` returns `422` |
-| At-least-once delivery, dedupe on the event id | **Secondary** (third-party guides). Design for duplicates regardless |
-| Whether `onboarding@resend.dev` can only send to the account owner | **Not verified.** Check in Phase 7 |
+| Finding                                                            | Detail                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Acceptable Use Policy                                              | Prohibits "sending unsolicited messages of any kind, including cold outreach, purchased lists, or scraped contact data". All mail must go to recipients who have "explicitly opted in". Bulk senders must include a valid address and company name, disclose why they are contacting the recipient, and honour opt-outs within 7 days |
+| Account thresholds                                                 | Complaint rate must be lower than **0.08%**. Bounce rate must be lower than **4%**. Otherwise the account may be shut down without warning                                                                                                                                                                                            |
+| Pricing and limits                                                 | Free plan: 3,000 emails per month and **100 per day**. Rate limit: **10 requests per second per team**, with `429` and `retry-after` when exceeded                                                                                                                                                                                    |
+| Idempotency                                                        | `Idempotency-Key` header on `POST /emails`. Up to 256 characters. Remembered for **24 hours**. A repeated request returns the original response without sending again                                                                                                                                                                 |
+| Webhooks                                                           | Signed through Svix. Verify with `resend.webhooks.verify` or the `svix` package using the **raw body** plus the `svix-id`, `svix-timestamp` and `svix-signature` headers. Events can be replayed from the dashboard                                                                                                                   |
+| Events                                                             | `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.failed`, `email.suppressed`, `email.opened`, `email.clicked`, `email.scheduled`                                                                                                                                                |
+| Event meaning                                                      | `email.sent` means "API request was successful" and Resend will attempt delivery. `email.delivered` means the recipient's mail server accepted it. `email.bounced` means permanently rejected                                                                                                                                         |
+| Test addresses                                                     | `delivered@resend.dev`, `bounced@resend.dev`, `complained@resend.dev`, `suppressed@resend.dev`. Labels work, for example `delivered+user1@resend.dev`                                                                                                                                                                                 |
+| Blocked domains                                                    | Sending to `example.com` or `test.com` returns `422`                                                                                                                                                                                                                                                                                  |
+| At-least-once delivery, dedupe on the event id                     | **Secondary** (third-party guides). Design for duplicates regardless                                                                                                                                                                                                                                                                  |
+| Whether `onboarding@resend.dev` can only send to the account owner | **Not verified.** Check in Phase 7                                                                                                                                                                                                                                                                                                    |
 
 **The important finding.** Resend's policy rules out the cold-outreach product that the brief's competitor list (Instantly, Smartlead) implies. Cadentra is therefore defined as **permission-based outreach**: every contact must carry a recorded consent basis. This is not a limitation to apologise for. It matches the brief's own compliance section ("no unsolicited mass-email behavior by default") and is easier to defend in an interview than a tool that pretends the policy does not exist.
 
@@ -149,36 +149,36 @@ All from vendor and blog pages, not from Google or Yahoo's own policy pages. Re-
 
 ### 4.6 Authentication and web security
 
-| Finding | Label |
-| --- | --- |
-| OWASP's Password Storage Cheat Sheet prefers Argon2id. The minimum commonly cited is 19 MiB memory, 2 iterations, 1 lane. I fetched the page link but only saw the figures through secondary summaries | Secondary |
-| `argon2` 0.45.2 is current on npm | Verified |
-| Cookie guidance: `HttpOnly`, `Secure`, explicit `SameSite`, and the `__Host-` prefix. Seen in OWASP's testing guide and ASVS pages through search | Secondary |
-| `helmet` 8.3.0, `express-rate-limit` 8.7.4, `pino` 10.4.0, `pino-http` 11.0.0, `csv-parse` 7.0.3, `svix` 2.10.0 (needs Node 22 or later), `resend` 6.38.1 are current | Verified |
-| Node 24 supports `--env-file`, so `dotenv` is unnecessary | Not verified. Check in Phase 1 |
+| Finding                                                                                                                                                                                                | Label                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| OWASP's Password Storage Cheat Sheet prefers Argon2id. The minimum commonly cited is 19 MiB memory, 2 iterations, 1 lane. I fetched the page link but only saw the figures through secondary summaries | Secondary                      |
+| `argon2` 0.45.2 is current on npm                                                                                                                                                                      | Verified                       |
+| Cookie guidance: `HttpOnly`, `Secure`, explicit `SameSite`, and the `__Host-` prefix. Seen in OWASP's testing guide and ASVS pages through search                                                      | Secondary                      |
+| `helmet` 8.3.0, `express-rate-limit` 8.7.4, `pino` 10.4.0, `pino-http` 11.0.0, `csv-parse` 7.0.3, `svix` 2.10.0 (needs Node 22 or later), `resend` 6.38.1 are current                                  | Verified                       |
+| Node 24 supports `--env-file`, so `dotenv` is unnecessary                                                                                                                                              | Not verified. Check in Phase 1 |
 
 **Recommendation:** Argon2id through the `argon2` package, with `node:crypto` scrypt as the fallback if the native module fails to install on the hosting platform. Server-side sessions with an opaque random token (details in ARCHITECTURE).
 
 ### 4.7 Testing
 
-| Finding | Label |
-| --- | --- |
-| Vitest 5.1.0, Supertest 7.3.2 and Playwright 1.65.1 are current | Verified |
-| Testcontainers 12.2.1 requires Node 22.22 or later | Verified |
-| A common pattern is Vitest plus Supertest against a real MySQL container, plus Playwright for end-to-end | Secondary |
-| No official compatibility matrix for Vitest 5 on Node 24 was found | Not verified. Phase 1 CI will prove it |
+| Finding                                                                                                  | Label                                  |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Vitest 5.1.0, Supertest 7.3.2 and Playwright 1.65.1 are current                                          | Verified                               |
+| Testcontainers 12.2.1 requires Node 22.22 or later                                                       | Verified                               |
+| A common pattern is Vitest plus Supertest against a real MySQL container, plus Playwright for end-to-end | Secondary                              |
+| No official compatibility matrix for Vitest 5 on Node 24 was found                                       | Not verified. Phase 1 CI will prove it |
 
 **Recommendation:** run MySQL as a Docker Compose service locally and as a GitHub Actions **service container** in CI. That tests against real MySQL without the extra Testcontainers dependency.
 
 ## 5. Hosting research (Secondary unless stated)
 
-| Service | Finding |
-| --- | --- |
-| Aiven | Free MySQL is retired. Cheapest MySQL is the Developer tier at about $5/month, per Aiven's own page |
-| TiDB Cloud Starter | The main free MySQL-compatible option: 5 GiB row storage, AWS only. It is MySQL-compatible, **not** MySQL. `SKIP LOCKED` support unconfirmed |
-| Railway | Roughly $5/month credit tiers. Sources conflict on whether a free tier exists. Usage-based MySQL estimated near $7/month |
-| Render | Free web services **spin down after about 15 minutes idle** and take about a minute to restart. No free background worker. Paid instances start near $7/month. Free Postgres expires after 30 days |
-| Fly.io | About $2.19/month for a continuously running 256 MB machine. The old free allowance appears to be gone for new accounts |
+| Service            | Finding                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aiven              | Free MySQL is retired. Cheapest MySQL is the Developer tier at about $5/month, per Aiven's own page                                                                                                |
+| TiDB Cloud Starter | The main free MySQL-compatible option: 5 GiB row storage, AWS only. It is MySQL-compatible, **not** MySQL. `SKIP LOCKED` support unconfirmed                                                       |
+| Railway            | Roughly $5/month credit tiers. Sources conflict on whether a free tier exists. Usage-based MySQL estimated near $7/month                                                                           |
+| Render             | Free web services **spin down after about 15 minutes idle** and take about a minute to restart. No free background worker. Paid instances start near $7/month. Free Postgres expires after 30 days |
+| Fly.io             | About $2.19/month for a continuously running 256 MB machine. The old free allowance appears to be gone for new accounts                                                                            |
 
 **What this means (Recommendation).** A queue worker that sleeps cannot send scheduled email. Two honest options: pay roughly $5 to $15 per month for always-on compute plus a real MySQL, or use free hosting and drive the worker from an external scheduled call to a protected `/internal/tick` endpoint. The MySQL-backed queue makes the second option possible, because all state lives in the database. Final choice is made in Phase 10 after a compatibility spike. See D-14.
 

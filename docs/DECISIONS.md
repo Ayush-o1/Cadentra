@@ -2,24 +2,24 @@
 
 All entries are **Proposed** until the Phase 0 review is approved. Each records the alternatives and the trade-off, because you should be able to defend them.
 
-| ID | Decision | Status |
-| --- | --- | --- |
-| D-01 | Permission-based outreach, not cold email | Proposed |
-| D-02 | Node 24 and TypeScript 6.0.x | Proposed |
-| D-03 | Express 5, Zod 4 | Proposed |
-| D-04 | Prisma 7.10 (pinned), raw SQL where needed | Proposed |
-| D-05 | MySQL-backed queue instead of BullMQ and Redis | Proposed |
-| D-06 | Resend, behind one small interface | Proposed |
-| D-07 | Server-side sessions in MySQL, Argon2id | Proposed |
+| ID   | Decision                                                    | Status   |
+| ---- | ----------------------------------------------------------- | -------- |
+| D-01 | Permission-based outreach, not cold email                   | Proposed |
+| D-02 | Node 24 and TypeScript 6.0.x                                | Proposed |
+| D-03 | Express 5, Zod 4                                            | Proposed |
+| D-04 | Prisma 7.10 (pinned), raw SQL where needed                  | Proposed |
+| D-05 | MySQL-backed queue instead of BullMQ and Redis              | Proposed |
+| D-06 | Resend, behind one small interface                          | Proposed |
+| D-07 | Server-side sessions in MySQL, Argon2id                     | Proposed |
 | D-08 | Workspace tenancy from day one, with composite foreign keys | Proposed |
-| D-09 | Vanilla JS modules, no bundler, served by Express | Proposed |
-| D-10 | Cursor pagination | Proposed |
-| D-11 | Vitest, Supertest, Playwright, MySQL service container | Proposed |
-| D-12 | CSV import as `text/csv` body, not multipart | Proposed |
-| D-13 | Provider API key from environment, not per workspace | Proposed |
-| D-14 | Hosting decided in Phase 10 after a spike | Proposed |
-| D-15 | Steps belong to a campaign; no reusable sequence entity | Proposed |
-| D-16 | No open tracking | Proposed |
+| D-09 | Vanilla JS modules, no bundler, served by Express           | Proposed |
+| D-10 | Cursor pagination                                           | Proposed |
+| D-11 | Vitest, Supertest, Playwright, MySQL service container      | Proposed |
+| D-12 | CSV import as `text/csv` body, not multipart                | Proposed |
+| D-13 | Provider API key from environment, not per workspace        | Proposed |
+| D-14 | Hosting decided in Phase 10 after a spike                   | Proposed |
+| D-15 | Steps belong to a campaign; no reusable sequence entity     | Proposed |
+| D-16 | No open tracking                                            | Proposed |
 
 ## D-01: Permission-based outreach, not cold email
 

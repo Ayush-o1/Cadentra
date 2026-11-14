@@ -6,7 +6,7 @@ Status: proposal, awaiting review. Evidence for the claims here is in [RESEARCH.
 
 Cadentra is a permission-based outbound email platform for small sales and marketing teams. A team imports contacts it has consent to email, builds a multi-step email sequence, schedules it, and watches what happened to every message: accepted, delivered, bounced, complained or failed.
 
-The name comes from *cadence*: the rhythm of a follow-up sequence. The product's core promise is that the numbers it shows are the numbers it can actually measure.
+The name comes from _cadence_: the rhythm of a follow-up sequence. The product's core promise is that the numbers it shows are the numbers it can actually measure.
 
 ### What it is not
 
@@ -14,33 +14,33 @@ Cadentra is not a cold-email tool. It has no lead database, no scraping, no mail
 
 ## 2. Target users and use cases
 
-| User | Situation | What they do in Cadentra |
-| --- | --- | --- |
+| User                                        | Situation                                                           | What they do in Cadentra                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Founder or sales rep at a small B2B company | 40 people asked for a demo at a conference booth and signed a sheet | Import them with consent basis "Requested contact", run a 3-step follow-up over 10 days, stop automatically for anyone who unsubscribes or bounces |
-| Marketer at a small SaaS | A waitlist of 800 sign-ups needs a launch sequence | Import the waitlist, send a 4-step launch sequence inside business hours, read delivery and bounce rates |
-| Customer success lead | New customers need an onboarding series | Add customers to a list, run a short sequence, check that nothing was sent to anyone who opted out |
+| Marketer at a small SaaS                    | A waitlist of 800 sign-ups needs a launch sequence                  | Import the waitlist, send a 4-step launch sequence inside business hours, read delivery and bounce rates                                           |
+| Customer success lead                       | New customers need an onboarding series                             | Add customers to a list, run a short sequence, check that nothing was sent to anyone who opted out                                                 |
 
 ## 3. Scope classification
 
 ### MVP (Phases 1 to 10)
 
-| Area | Included |
-| --- | --- |
-| Accounts | Register, log in, log out, server-side sessions, profile, change password, list and revoke own sessions |
-| Workspace | One workspace created at registration. Members are `owner` or `member`. Sender identity (from name, from address, reply-to, postal address) and sending limits live here |
-| Contacts | Create, edit, delete. Email validation. Unique per workspace. Search by email and name. Filter by list and status. Cursor pagination. Consent basis and source recorded per contact |
-| Lists | Create, rename, delete. Add and remove contacts |
-| CSV import | Upload, validate each row, report created, duplicate and invalid rows with row numbers. Consent basis is required for the whole import |
-| Suppression | A single suppression list per workspace. Unsubscribe, hard bounce, complaint, and manual entries. Checked at send time, so a suppression takes effect even for already-scheduled messages |
-| Campaigns | Create, edit while draft, target one list, ordered steps with a subject, body and delay from the previous step, schedule a start, a sending window (hours and weekdays in the workspace timezone), pause, resume, cancel |
-| Sending | MySQL-backed queue, retries with backoff, idempotent sends, rate and daily limits, graceful shutdown, stale-lease recovery |
-| Provider | Resend, plus a fake provider for tests and local development |
-| Delivery tracking | Signed webhook receiver, idempotent event storage, monotonic message status updates |
-| Unsubscribe | Link in every message, `List-Unsubscribe` and one-click POST header, public confirmation page |
-| Safety | Auto-pause a campaign when its bounce rate crosses a threshold. Per-workspace daily cap. Postal address and sender identity required before launch |
-| Analytics | Dashboard and campaign pages computed from real rows: contacts, active campaigns, messages scheduled, accepted, delivered, bounced, complained, failed, with date filters |
-| Audit | Activity log for important actions |
-| Settings | Profile, sender identity, provider status (sandbox or live, daily quota), security (password, sessions) |
+| Area              | Included                                                                                                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Accounts          | Register, log in, log out, server-side sessions, profile, change password, list and revoke own sessions                                                                                                                  |
+| Workspace         | One workspace created at registration. Members are `owner` or `member`. Sender identity (from name, from address, reply-to, postal address) and sending limits live here                                                 |
+| Contacts          | Create, edit, delete. Email validation. Unique per workspace. Search by email and name. Filter by list and status. Cursor pagination. Consent basis and source recorded per contact                                      |
+| Lists             | Create, rename, delete. Add and remove contacts                                                                                                                                                                          |
+| CSV import        | Upload, validate each row, report created, duplicate and invalid rows with row numbers. Consent basis is required for the whole import                                                                                   |
+| Suppression       | A single suppression list per workspace. Unsubscribe, hard bounce, complaint, and manual entries. Checked at send time, so a suppression takes effect even for already-scheduled messages                                |
+| Campaigns         | Create, edit while draft, target one list, ordered steps with a subject, body and delay from the previous step, schedule a start, a sending window (hours and weekdays in the workspace timezone), pause, resume, cancel |
+| Sending           | MySQL-backed queue, retries with backoff, idempotent sends, rate and daily limits, graceful shutdown, stale-lease recovery                                                                                               |
+| Provider          | Resend, plus a fake provider for tests and local development                                                                                                                                                             |
+| Delivery tracking | Signed webhook receiver, idempotent event storage, monotonic message status updates                                                                                                                                      |
+| Unsubscribe       | Link in every message, `List-Unsubscribe` and one-click POST header, public confirmation page                                                                                                                            |
+| Safety            | Auto-pause a campaign when its bounce rate crosses a threshold. Per-workspace daily cap. Postal address and sender identity required before launch                                                                       |
+| Analytics         | Dashboard and campaign pages computed from real rows: contacts, active campaigns, messages scheduled, accepted, delivered, bounced, complained, failed, with date filters                                                |
+| Audit             | Activity log for important actions                                                                                                                                                                                       |
+| Settings          | Profile, sender identity, provider status (sandbox or live, daily quota), security (password, sessions)                                                                                                                  |
 
 ### Post-MVP (built only if time allows after the MVP is deployed and stable)
 
@@ -54,17 +54,17 @@ Open tracking (unreliable because of mail-client image prefetching, which is why
 
 Each message is one row in `email_messages` with exactly one status. These are the states the system can truthfully distinguish.
 
-| Status | Meaning | How we know |
-| --- | --- | --- |
-| `scheduled` | Waiting for its send time (or a retry time) | We created it |
-| `sending` | A worker holds a lease and is calling the provider | Worker claimed it |
-| `accepted` | The provider's API accepted the request and returned an id. **This is not delivery** | HTTP success from Resend, `email.sent` webhook |
-| `delivered` | The recipient's mail server accepted the message | `email.delivered` webhook |
-| `bounced` | Permanently rejected | `email.bounced` webhook |
-| `complained` | Delivered, then marked as spam | `email.complained` webhook |
-| `failed` | We gave up after retries or got a permanent provider error | Our own retry logic or `email.failed` |
-| `skipped` | Not sent because the contact was suppressed or the campaign stopped | Send-time check |
-| `cancelled` | Campaign cancelled before the send | User action |
+| Status       | Meaning                                                                              | How we know                                    |
+| ------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `scheduled`  | Waiting for its send time (or a retry time)                                          | We created it                                  |
+| `sending`    | A worker holds a lease and is calling the provider                                   | Worker claimed it                              |
+| `accepted`   | The provider's API accepted the request and returned an id. **This is not delivery** | HTTP success from Resend, `email.sent` webhook |
+| `delivered`  | The recipient's mail server accepted the message                                     | `email.delivered` webhook                      |
+| `bounced`    | Permanently rejected                                                                 | `email.bounced` webhook                        |
+| `complained` | Delivered, then marked as spam                                                       | `email.complained` webhook                     |
+| `failed`     | We gave up after retries or got a permanent provider error                           | Our own retry logic or `email.failed`          |
+| `skipped`    | Not sent because the contact was suppressed or the campaign stopped                  | Send-time check                                |
+| `cancelled`  | Campaign cancelled before the send                                                   | User action                                    |
 
 `delivery_delayed` is recorded as an event but is not a status, because it is temporary.
 
@@ -110,23 +110,23 @@ Light theme. Warm off-white page, white surfaces, a single deep pine accent, and
 
 Contrast ratios below were **computed during Phase 0** with the WCAG relative-luminance formula.
 
-| Token | Hex | Use | Contrast |
-| --- | --- | --- | --- |
-| `--bg-page` | `#F7F6F2` | Page background | n/a |
-| `--bg-surface` | `#FFFFFF` | Cards, tables, modals | n/a |
-| `--bg-subtle` | `#EEEDE8` | Table header, hovered row, neutral badge | n/a |
-| `--border` | `#E4E1D8` | Dividers, input borders | n/a |
-| `--text` | `#1B211F` | Primary text | 15.12:1 on page |
-| `--text-muted` | `#555F5B` | Secondary text | 6.12:1 on page |
-| `--text-faint` | `#6E7773` | Placeholders, hints | 4.62:1 on white |
-| `--primary` | `#0F5C4D` | Primary button, links, focus ring | 7.90:1 on white |
-| `--primary-hover` | `#0B4A3E` | Hover and pressed | 10.18:1 on white |
-| `--primary-soft` | `#E3F1ED` | Selected nav item, soft fills | 6.80:1 with primary text |
-| `--signal` | `#B4540A` | Scheduled and attention accents | 4.98:1 on white |
-| `--success` / badge bg | `#1E7B4F` / `#E4F3EA` | Delivered | 5.25:1 on white; badge text `#14633D` is 6.35:1 |
-| `--warning` / badge bg | `#8A5A0B` / `#FBF0D9` | Paused, delayed | 5.92:1 on white; badge text `#7A4F08` is 6.30:1 |
-| `--error` / badge bg | `#B42318` / `#FCE8E6` | Failed, bounced | 6.57:1 on white; badge text `#9A1C12` is 6.99:1 |
-| `--info` / badge bg | `#2B5FA8` / `#E6EEF9` | Accepted, informational | 6.35:1 on white; badge text `#244F8C` is 6.98:1 |
+| Token                  | Hex                   | Use                                      | Contrast                                        |
+| ---------------------- | --------------------- | ---------------------------------------- | ----------------------------------------------- |
+| `--bg-page`            | `#F7F6F2`             | Page background                          | n/a                                             |
+| `--bg-surface`         | `#FFFFFF`             | Cards, tables, modals                    | n/a                                             |
+| `--bg-subtle`          | `#EEEDE8`             | Table header, hovered row, neutral badge | n/a                                             |
+| `--border`             | `#E4E1D8`             | Dividers, input borders                  | n/a                                             |
+| `--text`               | `#1B211F`             | Primary text                             | 15.12:1 on page                                 |
+| `--text-muted`         | `#555F5B`             | Secondary text                           | 6.12:1 on page                                  |
+| `--text-faint`         | `#6E7773`             | Placeholders, hints                      | 4.62:1 on white                                 |
+| `--primary`            | `#0F5C4D`             | Primary button, links, focus ring        | 7.90:1 on white                                 |
+| `--primary-hover`      | `#0B4A3E`             | Hover and pressed                        | 10.18:1 on white                                |
+| `--primary-soft`       | `#E3F1ED`             | Selected nav item, soft fills            | 6.80:1 with primary text                        |
+| `--signal`             | `#B4540A`             | Scheduled and attention accents          | 4.98:1 on white                                 |
+| `--success` / badge bg | `#1E7B4F` / `#E4F3EA` | Delivered                                | 5.25:1 on white; badge text `#14633D` is 6.35:1 |
+| `--warning` / badge bg | `#8A5A0B` / `#FBF0D9` | Paused, delayed                          | 5.92:1 on white; badge text `#7A4F08` is 6.30:1 |
+| `--error` / badge bg   | `#B42318` / `#FCE8E6` | Failed, bounced                          | 6.57:1 on white; badge text `#9A1C12` is 6.99:1 |
+| `--info` / badge bg    | `#2B5FA8` / `#E6EEF9` | Accepted, informational                  | 6.35:1 on white; badge text `#244F8C` is 6.98:1 |
 
 Every status badge pairs a colour with a text label and a small shape, so colour is never the only signal.
 
