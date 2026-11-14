@@ -1,4 +1,4 @@
-import request from 'supertest';
+import type request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildTestApp, errorBody, registerAgent, resetDatabase } from '../helpers.js';
 import { createCampaignWithRecipients, createScheduledMessage } from '../factories.js';
