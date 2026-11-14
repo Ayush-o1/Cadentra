@@ -1,24 +1,99 @@
 # Cadentra
 
-A permission-based outbound email platform: manage contacts, run multi-step email sequences, and track what actually happened to every message.
+A permission-based outbound email platform for small teams. Import contacts who agreed to hear from you, build a multi-step email sequence, schedule it, and see what actually happened to every message.
 
-**Status: Phase 0 (research and planning). No application code exists yet.**
+![Dashboard](docs/screenshots/dashboard.png)
 
-Nothing in this repository is deployed. A live URL will be added here only after it has been deployed and verified.
+**Status:** feature-complete MVP, tested locally. **Not deployed.** The deployment configuration is written and the Docker image has been built and smoke-tested locally; nothing is hosted yet. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for what is verified and what still needs your accounts.
 
-## Planned stack
+## What it does
 
-Node.js 24, TypeScript, Express 5, MySQL 8.4, Prisma 7, Zod, Vitest. The frontend is plain HTML, CSS and JavaScript modules. These choices are proposals until the Phase 0 review is approved; see [docs/DECISIONS.md](docs/DECISIONS.md).
+- **Contacts and consent.** Every contact records how and when they consented. CSV import validates each row and reports exactly what was added, skipped or rejected.
+- **Sequences.** A campaign sends an ordered series of emails with delays between them, inside a sending window in your time zone. Merge fields are validated when you save, so a typo never reaches a recipient.
+- **Honest delivery states.** Messages are _scheduled, sending, accepted, delivered, bounced, complained, failed, skipped_ or _cancelled_. "Accepted" (the provider took it) is never confused with "delivered".
+- **Safety by default.** Unsubscribes, bounces and spam reports suppress an address permanently. Suppression is checked again at the moment of sending. A campaign pauses itself when its bounce or complaint rate gets close to the provider's limits. Launch is blocked until the sender identity and postal address are set.
+- **Analytics from real rows.** Every number comes from the message table. Opens are deliberately not tracked, because mail apps that preload images make them unreliable.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/campaign-detail.png" alt="Campaign detail with live statuses" /></td>
+<td><img src="docs/screenshots/campaign-builder.png" alt="Sequence editor" /></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/analytics.png" alt="Analytics" /></td>
+<td><img src="docs/screenshots/contacts.png" alt="Contacts" /></td>
+</tr>
+</table>
+
+## Stack
+
+Node.js 24, TypeScript 6, Express 5, MySQL 8.4 through Prisma 7, Zod, pino. The frontend is plain HTML, CSS and JavaScript modules with no build step. Tests use Vitest, Supertest and Playwright. Email goes through Resend behind a small interface, with an explicit fake provider for development and tests.
+
+The background queue is the `email_messages` table itself, claimed with `FOR UPDATE SKIP LOCKED` and a lease. There is no Redis. [docs/DECISIONS.md](docs/DECISIONS.md) explains why.
+
+## Run it locally
+
+Requires Node 24 and Docker.
+
+```bash
+npm install                 # also generates the Prisma client
+cp .env.example .env        # then set APP_SECRET (openssl rand -hex 32)
+npm run db:up               # MySQL 8.4 on port 3307
+npm run db:deploy           # apply migrations
+npm run db:seed             # optional: demo workspace with campaigns in every state
+npm run dev
+```
+
+Open http://localhost:3000. With the seed, sign in as `demo@cadentra.example` / `cadentra-demo-2026`. Without it, create an account.
+
+With the default `EMAIL_PROVIDER=fake` nothing is sent. Messages move through accepted, delivered and bounced as a simulation that mirrors Resend's test addresses (`delivered@`, `bounced@`, `complained@`), and Settings says so. To send real email, set `EMAIL_PROVIDER=resend` with your keys; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Commands
+
+| Command                                       | What it does                                                       |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| `npm run dev`                                 | Server with reload (also runs the worker)                          |
+| `npm run typecheck` / `lint` / `format:check` | Static checks                                                      |
+| `npm test`                                    | Unit and integration tests (integration needs the MySQL container) |
+| `npm run test:e2e`                            | Playwright end-to-end tests against a real server and database     |
+| `npm run build` / `npm start`                 | Compile and run the production build                               |
+| `npm run smoke -- https://host`               | Smoke-test a running deployment                                    |
+| `npm run db:migrate`                          | Create a migration after editing `prisma/schema.prisma`            |
+
+## Configuration
+
+All settings are environment variables, validated at startup. See [.env.example](.env.example).
+
+| Variable                                                    | Purpose                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `DATABASE_URL`                                              | MySQL connection string (`?ssl=true` for hosted databases that need TLS)  |
+| `APP_URL`                                                   | Public address, used in unsubscribe links. `https` required in production |
+| `APP_SECRET`                                                | At least 32 characters. Signs unsubscribe links                           |
+| `EMAIL_PROVIDER`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | `fake` (default) or `resend`                                              |
+| `RUN_WORKER`, `WORKER_*`                                    | Run the send worker in-process, and tune its pace                         |
+| `TICK_TOKEN`                                                | Optional. Enables `POST /internal/tick` for hosts that sleep              |
+| `TRUST_PROXY`                                               | Set to `true` behind a reverse proxy                                      |
 
 ## Documentation
 
-| Document                                                     | Purpose                                                                            |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| [docs/RESEARCH.md](docs/RESEARCH.md)                         | What was inspected, what was verified, and the evidence behind the recommendations |
-| [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md) | Product definition, MVP scope, and the post-MVP list                               |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                 | System design, background jobs, email integration, security approach               |
-| [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md)           | Draft schema direction, constraints, indexes, transactions                         |
-| [docs/DECISIONS.md](docs/DECISIONS.md)                       | Decision log with alternatives and trade-offs                                      |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                           | Phases 1 to 10 with acceptance criteria and the Git workflow                       |
+| Document                                             | Contents                                                         |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)                 | How the system fits together, the send pipeline, diagrams        |
+| [Database design](docs/DATABASE_DESIGN.md)           | Schema, constraints, indexes, transactions, concurrency findings |
+| [API reference](docs/API_REFERENCE.md)               | Every endpoint, with conventions and error codes                 |
+| [Security](docs/SECURITY.md)                         | Threats considered, controls, and known gaps                     |
+| [Testing](docs/TESTING.md)                           | Strategy, what is covered, results                               |
+| [Deployment](docs/DEPLOYMENT.md)                     | Hosting options, configuration, verification, what is untested   |
+| [Decisions](docs/DECISIONS.md)                       | Decision log with alternatives and trade-offs                    |
+| [Product requirements](docs/PRODUCT_REQUIREMENTS.md) | Scope, message and campaign lifecycles, design system            |
+| [Research](docs/RESEARCH.md)                         | Phase 0 findings, with verified facts separated from judgement   |
+| [Roadmap](docs/ROADMAP.md)                           | The ten phases as planned, and where they ended up               |
 
-Further documents (API reference, security, testing, deployment) are created in the phase that produces their content.
+## Known limitations
+
+- Not deployed, and real sending through Resend has not been exercised: no API key or verified domain was available. The Resend client is tested against a mocked `fetch`, and webhook handling against correctly signed payloads, but not against Resend itself.
+- No email verification at sign-up, no password reset, and a workspace has a single owner (the `member` role exists in the schema but there are no invitations).
+- Rate limiting is in memory, so it resets on restart and is per instance.
+- Search matches email prefixes efficiently; name and company search scans one workspace's contacts, which is fine at the sizes this targets.
+
+The complete list is in [docs/SECURITY.md](docs/SECURITY.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

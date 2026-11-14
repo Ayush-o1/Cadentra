@@ -1,6 +1,6 @@
 # Cadentra: Product Requirements
 
-Status: proposal, awaiting review. Evidence for the claims here is in [RESEARCH.md](RESEARCH.md).
+Status: implemented. Where the build differs from the original proposal, it is noted inline. Evidence for the claims here is in [RESEARCH.md](RESEARCH.md).
 
 ## 1. What Cadentra is
 
@@ -118,7 +118,7 @@ Contrast ratios below were **computed during Phase 0** with the WCAG relative-lu
 | `--border`             | `#E4E1D8`             | Dividers, input borders                  | n/a                                             |
 | `--text`               | `#1B211F`             | Primary text                             | 15.12:1 on page                                 |
 | `--text-muted`         | `#555F5B`             | Secondary text                           | 6.12:1 on page                                  |
-| `--text-faint`         | `#6E7773`             | Placeholders, hints                      | 4.62:1 on white                                 |
+| `--text-faint`         | `#626B67`             | Placeholders, hints                      | 5.09:1 on the page background                   |
 | `--primary`            | `#0F5C4D`             | Primary button, links, focus ring        | 7.90:1 on white                                 |
 | `--primary-hover`      | `#0B4A3E`             | Hover and pressed                        | 10.18:1 on white                                |
 | `--primary-soft`       | `#E3F1ED`             | Selected nav item, soft fills            | 6.80:1 with primary text                        |
@@ -132,7 +132,7 @@ Every status badge pairs a colour with a text label and a small shape, so colour
 
 ### Typography
 
-Candidate: **Geist Sans** for the interface and **Geist Mono** for identifiers and numbers, self-hosted as WOFF2 files so there is no third-party font request and the content security policy stays tight. Availability and licence are **not verified** and will be confirmed in Phase 4. Fallback: the system UI font stack.
+Used: **Geist Sans** for the interface and **Geist Mono** for identifiers and numbers, self-hosted as WOFF2 files so there is no third-party font request and the content security policy stays tight. The package is published under the SIL Open Font License, and the variable font files are served from `/fonts` with the licence alongside. Fallback: the system UI font stack.
 
 Scale (rem, base 16px): 0.75, 0.8125, 0.875 (body in tables), 1 (body), 1.125, 1.375, 1.75, 2.25. Tabular numerals for all numeric columns.
 

@@ -1,38 +1,36 @@
-# Cadentra: Database Design (Draft v0)
+# Database design
 
-Status: **draft direction**, written in Phase 0 and finalised in Phase 2 after a schema spike. Column lists below are intent, not final DDL. MySQL 8.4 with InnoDB, `utf8mb4`, strict SQL mode.
+MySQL 8.4, InnoDB, `utf8mb4`. The schema is defined in [`prisma/schema.prisma`](../prisma/schema.prisma); the single migration also contains the integrity rules Prisma's schema language cannot express (CHECK constraints). This document describes what was built and why.
 
-## 1. Design principles
+## Principles
 
-1. **One source of truth per fact.** Whether an address may be emailed lives only in `suppressions`. `contacts` does not carry a second "unsubscribed" flag that could disagree with it.
+1. **One source of truth per fact.** Whether an address may be emailed lives only in `suppressions`. Contacts have no second "unsubscribed" flag that could disagree with it.
 2. **The database enforces tenancy**, not just the application. Cross-workspace links are impossible by constraint.
-3. **State machines are constrained.** Status columns are `ENUM` or a `CHECK` list, and transitions are made with conditional `UPDATE ... WHERE status = ?`.
-4. **Duplicates are prevented by unique keys**, never by "check first, then insert" alone.
-5. **Indexes come from named query patterns** (section 5). No index without a query that needs it.
-6. **Aggregates are computed, not stored.** Counts and rates are calculated from rows with an index plan, and only precomputed if measurement shows a need.
+3. **Duplicates are prevented by unique keys**, never by "check first, then insert" alone.
+4. **State is constrained.** Statuses are `ENUM`s, and transitions are conditional `UPDATE … WHERE status = ?`.
+5. **Indexes exist for named queries** and were checked with `EXPLAIN` (below).
+6. **Aggregates are computed from rows**, not stored.
 
-## 2. Entities and ownership
+## Tables
 
-MVP entities. Deliberately omitted: a reusable `EmailSequence` entity (steps belong to a campaign), a separate `SequenceEnrollment` (it is `campaign_recipients`), an `UnsubscribeEvent` table (an unsubscribe is a suppression row plus an activity-log entry), and a job-metadata table (the queue is `email_messages`).
+| Table                  | Purpose                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `users`                | Login identity. Email unique and stored lower-cased                            |
+| `sessions`             | Server-side sessions. Only the SHA-256 hash of the token is stored             |
+| `workspaces`           | The tenant: sender identity, time zone, default sending window, daily limit    |
+| `workspace_members`    | Membership and role (`owner`, `member`). Primary key `(workspace_id, user_id)` |
+| `contacts`             | A person, with consent basis, source and time                                  |
+| `contact_lists`        | Named group of contacts                                                        |
+| `contact_list_members` | Contact on a list. Primary key `(list_id, contact_id)`                         |
+| `suppressions`         | Addresses that must never be emailed, with a reason                            |
+| `campaigns`            | Name, status, target list, start time, sending window, version                 |
+| `campaign_steps`       | The ordered emails of a campaign: subject, body, delay in days                 |
+| `campaign_recipients`  | One row per contact in a campaign, with their sequence state                   |
+| `email_messages`       | One row per email. **This is the job queue**                                   |
+| `webhook_events`       | Provider events, stored once each, for deduplication and audit                 |
+| `activity_log`         | Append-only record of important actions                                        |
 
-| Table                  | Owned by                    | Purpose                                                                           |
-| ---------------------- | --------------------------- | --------------------------------------------------------------------------------- |
-| `users`                | global                      | Login identity. Email unique                                                      |
-| `sessions`             | user                        | Server-side sessions, token stored as SHA-256 hash                                |
-| `workspaces`           | global                      | Tenant. Holds sender identity, timezone, sending window defaults, daily cap       |
-| `workspace_members`    | workspace and user          | Membership with a role (`owner`, `member`). Primary key `(workspace_id, user_id)` |
-| `contacts`             | workspace                   | A person, with consent basis, consent source and consent time                     |
-| `contact_lists`        | workspace                   | Named group                                                                       |
-| `contact_list_members` | workspace                   | Contact belongs to list. Composite primary key                                    |
-| `suppressions`         | workspace                   | Addresses that must not be emailed, with reason                                   |
-| `campaigns`            | workspace                   | Name, status, target list, schedule, sending window, version                      |
-| `campaign_steps`       | campaign                    | Ordered steps: subject, body, delay in days from the previous step                |
-| `campaign_recipients`  | campaign                    | One row per contact in the campaign. Holds per-contact sequence state             |
-| `email_messages`       | campaign recipient and step | One row per message. **This is the queue**                                        |
-| `webhook_events`       | provider                    | Raw provider events for idempotent processing and audit                           |
-| `activity_log`         | workspace                   | Append-only audit of important actions                                            |
-
-## 3. ER diagram
+Not modelled on purpose: a reusable sequence entity (steps belong to a campaign), a separate enrolment table (that is `campaign_recipients`), an unsubscribe-event table (an unsubscribe is a suppression row plus an activity entry), and a job-metadata table (the queue is `email_messages`).
 
 ```mermaid
 erDiagram
@@ -48,137 +46,106 @@ erDiagram
   contacts ||--o{ contact_list_members : "belongs to"
   contact_lists ||--o{ campaigns : "targeted by"
   campaigns ||--o{ campaign_steps : sequence
-  campaigns ||--o{ campaign_recipients : enrolls
+  campaigns ||--o{ campaign_recipients : enrols
   contacts ||--o{ campaign_recipients : "enrolled as"
   campaign_recipients ||--o{ email_messages : produces
   campaign_steps ||--o{ email_messages : "rendered as"
-  email_messages ||--o{ webhook_events : "updated by (via provider_message_id)"
+  email_messages ||--o{ webhook_events : "updated by (provider_message_id)"
 ```
 
-## 4. Key constraints (the part worth explaining in an interview)
+## Tenant isolation through composite foreign keys
 
-### 4.1 Tenant isolation through composite foreign keys
-
-Tables that link two tenant-owned rows store `workspace_id` as well, and the foreign keys include it:
+Parents expose `(workspace_id, id)` as a unique key, and tables that link two tenant-owned rows carry `workspace_id` and reference both parents through it:
 
 ```sql
--- parents expose (workspace_id, id) as a unique key
-ALTER TABLE contacts      ADD UNIQUE KEY uq_contacts_ws_id      (workspace_id, id);
-ALTER TABLE contact_lists ADD UNIQUE KEY uq_contact_lists_ws_id (workspace_id, id);
-
-CREATE TABLE contact_list_members (
-  workspace_id INT NOT NULL,
-  list_id      INT NOT NULL,
-  contact_id   INT NOT NULL,
-  added_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (list_id, contact_id),
-  CONSTRAINT fk_clm_list    FOREIGN KEY (workspace_id, list_id)    REFERENCES contact_lists (workspace_id, id) ON DELETE CASCADE,
-  CONSTRAINT fk_clm_contact FOREIGN KEY (workspace_id, contact_id) REFERENCES contacts      (workspace_id, id) ON DELETE CASCADE
-);
+CONSTRAINT contact_list_members_workspace_id_list_id_fkey
+  FOREIGN KEY (workspace_id, list_id)    REFERENCES contact_lists (workspace_id, id) ON DELETE CASCADE,
+CONSTRAINT contact_list_members_workspace_id_contact_id_fkey
+  FOREIGN KEY (workspace_id, contact_id) REFERENCES contacts      (workspace_id, id) ON DELETE CASCADE
 ```
 
-Because both foreign keys carry the same `workspace_id`, a row linking workspace A's contact to workspace B's list cannot exist. A bug in the application that forgets a `WHERE workspace_id = ?` still cannot create a cross-tenant link. The same pattern applies to `campaign_recipients` (campaign and contact) and `campaigns.list_id`.
+A row linking workspace A's contact to workspace B's list cannot be inserted, whatever the application does. The same pattern covers `campaigns.list_id`, `campaign_recipients` (campaign and contact), and `email_messages` (campaign, recipient and step, where recipient and step must belong to the _same campaign_). Prisma 7 models these overlapping keys, and the integration tests insert the forbidden links directly and expect a foreign-key error.
 
-Cost: wider keys and slightly more verbose Prisma relations. First Phase 2 spike: confirm Prisma 7 can model these relations, or fall back to hand-edited migration SQL.
+## Constraints
 
-### 4.2 Uniqueness
+**Unique keys**
 
-| Constraint                                                       | Prevents                                                                                                     |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `users(email)` unique                                            | Duplicate accounts                                                                                           |
-| `contacts(workspace_id, email)` unique                           | Duplicate contacts. Email stored lower-cased, so comparison is case-insensitive without relying on collation |
-| `contact_lists(workspace_id, name)` unique                       | Two lists with the same name                                                                                 |
-| `suppressions(workspace_id, email)` unique                       | Duplicate suppression rows. Inserting an already-suppressed address becomes a no-op                          |
-| `campaign_recipients(campaign_id, contact_id)` unique            | The same person enrolled twice in one campaign                                                               |
-| `email_messages(campaign_recipient_id, campaign_step_id)` unique | **Two messages for the same step and person.** The core duplicate-send guard                                 |
-| `email_messages(provider_message_id)` unique (nullable)          | Two messages mapped to one provider id. Lets a webhook find exactly one row                                  |
-| `webhook_events(provider, provider_event_id)` unique             | Reprocessing a redelivered webhook                                                                           |
-| `sessions(token_hash)` unique                                    | Token collisions, and gives an index for lookup                                                              |
-| `campaign_steps(campaign_id, position)` unique                   | Two steps at one position                                                                                    |
+| Key                                                             | Prevents                                                                           |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `users(email)`                                                  | Two accounts for one address                                                       |
+| `contacts(workspace_id, email)`                                 | Duplicate contacts. Emails are lower-cased; the collation is also case-insensitive |
+| `contact_lists(workspace_id, name)`                             | Two lists with one name                                                            |
+| `suppressions(workspace_id, email)`                             | Duplicate suppression rows; inserting an existing one is a no-op                   |
+| `campaign_recipients(campaign_id, contact_id)`                  | The same person enrolled twice in a campaign                                       |
+| **`email_messages(recipient_id, step_id)`**                     | **Two emails for one step and one person: the core duplicate-send guard**          |
+| `email_messages(provider_message_id)`                           | Two messages mapped to one provider id; lets a webhook find exactly one row        |
+| `webhook_events(provider, provider_event_id)`                   | Reprocessing a redelivered webhook                                                 |
+| `sessions(token_hash)`, `campaign_steps(campaign_id, position)` | Token collisions; two steps at one position                                        |
 
-### 4.3 Not-null, types, and checks
+**CHECK constraints** (MySQL 8.0.16+ enforces them; added by hand in the migration)
 
-- Timestamps are `TIMESTAMP` or `DATETIME(3)` in UTC, set by the database defaults (`created_at`, and `updated_at ... ON UPDATE`). The application converts to the workspace timezone only for display and for send-window maths.
-- Emails: `VARCHAR(254)`, stored lower-cased and trimmed.
-- Statuses: `ENUM` with the values listed in PRODUCT_REQUIREMENTS. Prisma maps these to TypeScript union types.
-- `CHECK (delay_days BETWEEN 0 AND 60)`, `CHECK (attempts BETWEEN 0 AND 10)`, `CHECK (position >= 1)`. MySQL 8.0.16 or later enforces CHECK constraints. Prisma cannot declare them, so they are added by hand-edited migration SQL.
-- Message body: `MEDIUMTEXT`. Rendered per-recipient content is **not** stored. It is rendered at send time from the step and contact, so edits to contact data do not leave stale copies. The subject actually sent is stored in `email_messages.subject_sent` for audit.
+- Emails in `users`, `contacts`, `suppressions` and `email_messages` are stored lower-cased (compared with a binary collation, since the default collation would make the check always true), and user and contact emails contain an `@`.
+- Sending windows: start hour 0–23, end hour 1–24, start before end (on `workspaces` and `campaigns`). Daily limit 1–100,000.
+- Step position ≥ 1; delay 0–60 days. Campaign `version` ≥ 1.
+- `email_messages.attempts` between 0 and 10.
+- **A `sending` message must have a lease** (`locked_by` and `locked_until`), and an `accepted`, `delivered`, `bounced` or `complained` message must have a `provider_message_id`.
+- A `stopped` recipient must have a stop reason.
 
-### 4.4 Deletion behaviour (deliberate, not defaulted)
+These are not decoration. Writing the seed script hit `chk_recipients_stop_reason` on the first run, which was a bug in the seed that application code would not have caught.
 
-| Parent deleted | Children                                                                                           | Reason                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| user           | `sessions` cascade                                                                                 | Sessions are meaningless without the user                                                                                      |
-| workspace      | everything cascades                                                                                | Whole-tenant erasure. Not exposed in the MVP UI                                                                                |
-| contact        | `contact_list_members` cascade. `campaign_recipients.contact_id` set null. `suppressions` **kept** | Removing someone's data must not delete the fact that they opted out. Analytics rows survive, with the personal fields cleared |
-| list           | `contact_list_members` cascade. A campaign that targets it blocks the delete (`RESTRICT`)          | A running campaign must not lose its audience silently                                                                         |
-| campaign       | draft only: steps, recipients cascade. Non-draft campaigns are cancelled, not deleted              | Sent history is a record                                                                                                       |
+## Deleting data
 
-Open question for Phase 2: how `email_messages.to_email` is redacted when a contact is erased. Likely a nightly job, or immediate nulling in the delete transaction.
+| Parent deleted | Effect on children                                                                                    |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| user           | Their sessions cascade. Activity and campaigns they created keep their rows with the user set to null |
+| workspace      | Everything it owns cascades                                                                           |
+| contact        | List memberships, campaign recipients and their messages cascade. **The suppression is kept**         |
+| list           | Memberships cascade. A list that a campaign targets cannot be deleted (`RESTRICT`)                    |
+| campaign       | Only drafts can be deleted (steps cascade). A launched campaign is cancelled, not deleted             |
 
-### 4.5 Concurrency
+Deleting a contact is an erasure of that person's campaign history, deliberately: removing someone's data must not remove the fact that they opted out, which is why suppressions are independent of contacts. A previously unsubscribed person who is re-added is still suppressed (tested).
 
-- **Optimistic locking** on `campaigns.version`. An edit sends the version it read. `UPDATE ... WHERE id = ? AND version = ?` that affects zero rows means someone else changed it, and the API returns 409. This is how two browser tabs avoid silently overwriting each other.
-- **Conditional status updates** for transitions: `UPDATE campaigns SET status = 'paused' WHERE id = ? AND status = 'running'`. Affected rows tell you whether you won.
-- **Row locks with `SKIP LOCKED`** for queue claims (ARCHITECTURE section 7.2).
-- Default isolation level stays `REPEATABLE READ`. Transactions are short and never wrap a network call to the provider.
+## Indexes and query plans
 
-### 4.6 Primary key type
+Each index exists for a named query. Plans were checked with `EXPLAIN` on a synthetic workspace of 50,000 contacts and 50,000 messages (`scripts/perf-dataset.sql`, `scripts/explain-queries.sql`).
 
-Leaning `INT AUTO_INCREMENT` for all tables. It is compact and ordered, which suits InnoDB's clustered index, and Prisma's `Int` avoids the `BigInt` JSON serialisation problem. The ceiling (about 2.1 billion rows) is far beyond this project. Sequential ids are guessable, so authorization must never depend on id secrecy. That is why every lookup is scoped by workspace. To be confirmed in Phase 2. `BIGINT` for `email_messages`, `webhook_events` and `activity_log` is the alternative.
+| Query                                     | Plan                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Claim due messages                        | `idx_messages_status_run_at` range scan, no filesort; campaigns joined by primary key               |
+| Contacts page, newest first               | Primary key scanned backwards with the workspace filter, stops at `LIMIT`                           |
+| Contact search by email prefix            | `uq_contacts_ws_email`, index-only. Name and company search is a bounded scan within one workspace  |
+| Contacts on a list with their suppression | `contact_list_members` primary key, then `contacts` and `suppressions` by unique key (one row each) |
+| Campaign funnel (counts by status)        | `idx_messages_campaign_status`                                                                      |
+| Webhook lookup by provider id             | Unique index `uq_messages_provider_id`                                                              |
+| Session lookup on every request           | Unique index `uq_sessions_token_hash`                                                               |
 
-## 5. Query patterns and indexes
+**An index that was not added.** The analytics aggregate (counts of accepted, delivered and bounced over a date range) uses `idx_messages_ws_status` and a temporary table rather than `idx_messages_ws_accepted_at`. A covering index `(workspace_id, accepted_at, status)` was tried: the query stayed at about 21 ms on 50,000 messages either way, so the index was dropped rather than paying write overhead for no measured gain. Revisit if message volume grows by an order of magnitude.
 
-Indexes below exist because a named query needs them. Each will be checked with `EXPLAIN` in Phase 2 and again in Phase 9.
+## Transactions
 
-| #   | Query                                                                                      | Index                                                                                                                                                              |
-| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Q1  | Claim due messages: `WHERE status='scheduled' AND run_at <= NOW() ORDER BY run_at LIMIT n` | `email_messages (status, run_at)`                                                                                                                                  |
-| Q2  | Reclaim expired leases: `WHERE status='sending' AND locked_until < NOW()`                  | Same index (leading column `status`)                                                                                                                               |
-| Q3  | Contacts page: `WHERE workspace_id=? ORDER BY id DESC` with cursor `id < ?`                | `contacts (workspace_id, id)`, which the composite unique key from 4.1 already provides                                                                            |
-| Q4  | Contact search by email prefix: `WHERE workspace_id=? AND email LIKE 'abc%'`               | The unique key `(workspace_id, email)` serves prefix matches. Substring and name search accept a bounded scan within one workspace. A `FULLTEXT` index is post-MVP |
-| Q5  | Contacts in a list: `WHERE list_id=?`                                                      | Primary key `(list_id, contact_id)`. Reverse lookup by contact needs `(contact_id)`                                                                                |
-| Q6  | Send-time suppression check: `WHERE workspace_id=? AND email=?`                            | The suppression unique key                                                                                                                                         |
-| Q7  | Campaign funnel: `GROUP BY status WHERE campaign_id=?`                                     | `email_messages (campaign_id, status)` (denormalised `campaign_id` on the message, to avoid joining through recipients)                                            |
-| Q8  | Dashboard time series: messages by day in a workspace                                      | `email_messages (workspace_id, created_at)` or `(workspace_id, accepted_at)`. Choose after measuring in Phase 8                                                    |
-| Q9  | Webhook lookup by provider message id                                                      | Unique index on `provider_message_id`                                                                                                                              |
-| Q10 | Due recipients and next-step creation                                                      | `campaign_recipients (campaign_id, status)`                                                                                                                        |
-| Q11 | Session lookup on every request                                                            | Unique `sessions (token_hash)`. A second index on `expires_at` for cleanup                                                                                         |
-| Q12 | Activity feed: `WHERE workspace_id=? ORDER BY id DESC`                                     | `activity_log (workspace_id, id)`                                                                                                                                  |
+| Operation         | Atomic unit                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| Register          | user, workspace, owner membership, activity entry                                           |
+| Launch campaign   | status change (with version check), recipient snapshot excluding suppressed, first messages |
+| Claim messages    | `SELECT … FOR UPDATE SKIP LOCKED` and the update to `sending`                               |
+| Record a send     | message to `accepted`, create the next step's message (or complete the recipient)           |
+| Process a webhook | message status change, suppression insert, stop the recipient's remaining steps             |
+| Unsubscribe       | suppression insert, skip pending messages, stop the recipient, activity entry               |
+| CSV import        | per batch of 500: contact inserts and list memberships                                      |
+| Cancel campaign   | status change, cancel pending messages, stop recipients                                     |
 
-Indexes I am deliberately **not** adding: a standalone `status` index on `contacts` (low selectivity), indexes on every foreign key beyond what InnoDB already creates, and any index on `body` columns.
+The call to the email provider is never inside a transaction.
 
-## 6. Transaction boundaries
+## Concurrency findings
 
-| Operation           | Inside one transaction                                                                                                                         | Why                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Register            | user, workspace, owner membership                                                                                                              | No account without a workspace                                                      |
-| CSV import          | Per batch of rows: contact inserts and list membership                                                                                         | Partial progress is reported row by row. A failed batch does not leave half a batch |
-| Launch campaign     | Status change, recipient snapshot (`INSERT ... SELECT` from list members, **excluding suppressed addresses**), first message row per recipient | Launch is all or nothing                                                            |
-| Claim messages      | `SELECT ... FOR UPDATE SKIP LOCKED` plus the `UPDATE` to `sending`                                                                             | Two workers cannot claim the same row                                               |
-| Record send success | Message to `accepted`, create next step's message, update `campaign_recipients`                                                                | Next step exists if and only if this one was recorded                               |
-| Process webhook     | Event insert, message status change, suppression insert, stop remaining steps                                                                  | Duplicate-safe and consistent                                                       |
-| Unsubscribe         | Suppression insert, stop recipient steps, mark scheduled messages `skipped`, activity log                                                      | The opt-out is complete or not at all                                               |
+- **Isolation level.** At REPEATABLE READ the claim query deadlocked under four concurrent workers (InnoDB reported next-key locks on the status index). Setting READ COMMITTED on every pooled connection fixed it. Prisma's `isolationLevel` option was tried first and does nothing through the MariaDB adapter, which a test now pins down.
+- **Query plan.** After that, the test still showed three of four workers claiming nothing. `EXPLAIN` showed MySQL starting from `campaigns` with a filesort, which locked every due row first. Forcing the index and join order fixed it, verified by running the concurrency test repeatedly.
+- **Optimistic locking** on `campaigns.version` for draft edits, and **conditional updates** for status transitions. Simultaneous launches or pauses produce exactly one success and the rest get 409 (tested with parallel requests).
 
-**Never** inside a transaction: the HTTP call to the provider. A slow provider must not hold row locks.
+## Retention
 
-## 7. Retention
+Expired sessions and webhook payloads older than 30 days are cleaned by the worker's housekeeping (once an hour). Message history and the activity log are kept. Suppressions are kept indefinitely.
 
-| Data                             | Retention                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------- |
-| Expired sessions                 | Deleted by the worker housekeeping loop                                             |
-| `webhook_events.payload`         | Cleared after 30 days. Event id and type remain for dedupe history                  |
-| `email_messages`, `activity_log` | Kept, since they are the product's record                                           |
-| Suppressions                     | Kept indefinitely, since deleting them would allow re-mailing someone who opted out |
+## Migrations
 
-## 8. Seed data
-
-Phase 2 provides a seed script for local development: one workspace, around 200 contacts in several lists, one campaign in each state, and messages in every status, so the dashboard has real rows to aggregate. Seed data is clearly labelled and never loaded in production.
-
-## 9. Phase 2 spikes (to settle before writing migrations)
-
-1. Can Prisma 7 model the composite tenant foreign keys, or do we hand-write them?
-2. Does `FOR UPDATE SKIP LOCKED` run correctly through `$queryRaw` inside an interactive transaction with the MariaDB adapter?
-3. If TiDB Cloud Starter is a hosting candidate: do the composite foreign keys, CHECK constraints and the claim query behave the same there? If not, hosting uses real MySQL.
-4. INT versus BIGINT keys.
-5. Erasure and `to_email` redaction approach.
+`npx prisma migrate dev` creates and applies migrations locally; `npx prisma migrate deploy` applies them in CI, tests and production. The initial migration is hand-extended with the CHECK constraints; `migrate dev` verifies against a shadow database that the result still matches the schema. IDs are `INT AUTO_INCREMENT` (about 2.1 billion rows per table, far above this project's needs, and Prisma's `Int` avoids `BigInt` JSON problems). Sequential IDs are guessable, so authorization never depends on ID secrecy.

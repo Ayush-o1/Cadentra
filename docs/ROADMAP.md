@@ -1,6 +1,23 @@
 # Cadentra: Implementation Roadmap
 
-Status: proposal, awaiting review. No phase starts until the previous phase is reviewed and you approve. Approval to proceed is separate from approval to merge into `main`.
+Status: **all phases implemented** on branch `feat/cadentra-mvp`. This file keeps the original plan; the notes below say where reality differed. Nothing is merged to `main` without your approval.
+
+## Where it ended up
+
+| Phase                     | Planned                                      | Actual                                                                                                           |
+| ------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1 Foundation              | Express skeleton, config, errors, CI         | Done as planned. `dotenv` was unnecessary (Node's `--env-file`)                                                  |
+| 2 Database                | Schema, migrations, constraints, claim query | Done. The Prisma and isolation-level spikes had real findings (DECISIONS D-04, D-17, D-18)                       |
+| 3 Auth and security       | Sessions, CSRF, rate limits                  | Done. `GET /auth/session` added (D-26)                                                                           |
+| 4 Design system and shell | Tokens, shell, components                    | Done, built alongside the pages rather than before contacts, because the pages needed it                         |
+| 5 Contacts and lists      | CRUD, import, suppression                    | Done                                                                                                             |
+| 6 Campaigns               | Lifecycle, builder                           | Done                                                                                                             |
+| 7 Email and jobs          | Provider, worker, webhooks, unsubscribe      | Done. Real Resend not exercised (no credentials)                                                                 |
+| 8 Analytics               | Dashboard and analytics                      | Done, with a seed script so screens have data                                                                    |
+| 9 Hardening               | Review, audit, a11y                          | Done: headers, rate limit on the unsubscribe route, CSV formula guard, axe scan and its fixes, query-plan review |
+| 10 Deployment             | Deploy, README, screenshots                  | **Packaging and docs done; not deployed.** Image verified locally. See DEPLOYMENT.md                             |
+
+The original plan follows.
 
 ## Phase dependencies
 

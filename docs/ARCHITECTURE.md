@@ -1,219 +1,160 @@
-# Cadentra: Architecture
+# Architecture
 
-Status: proposal, awaiting review. Decisions and alternatives are in [DECISIONS.md](DECISIONS.md). Schema direction is in [DATABASE_DESIGN.md](DATABASE_DESIGN.md).
+This describes the system as built. Earlier plans are in [ROADMAP.md](ROADMAP.md); the reasoning behind each choice is in [DECISIONS.md](DECISIONS.md).
 
-## 1. Shape of the system
+## Shape of the system
 
-One TypeScript codebase, one deployable, two roles. The same build starts either the **web process** (HTTP API plus static frontend) or the **worker process** (queue polling). In local development and on small hosts both roles can run in a single process. Splitting them later requires no code change, only a different start command.
+One TypeScript codebase and one deployable. The same process serves the HTTP API, the static frontend, and (optionally) the send worker. `RUN_WORKER=false` turns the worker off for a web-only process.
 
 ```mermaid
 flowchart LR
-  Browser["Browser<br/>HTML + CSS + JS modules"] -->|"HTTPS, cookie session"| Web
-  subgraph App["Node.js 24 (TypeScript)"]
-    Web["Web role<br/>Express 5"]
-    Worker["Worker role<br/>poll, claim, send"]
+  Browser["Browser<br/>HTML, CSS, JS modules"] -->|"HTTPS, cookie session"| Web
+  subgraph App["Node.js 24 process"]
+    Web["Express 5<br/>API + static files"]
+    Worker["Worker<br/>claim, check, send, record"]
   end
-  Web -->|"SQL"| DB[("MySQL 8.4")]
-  Worker -->|"SQL: claim with lease"| DB
-  Worker -->|"HTTPS + Idempotency-Key"| Resend["Resend API"]
-  Resend -->|"signed webhooks (Svix)"| Web
+  Web -->|SQL| DB[("MySQL 8.4")]
+  Worker -->|"claim with SKIP LOCKED"| DB
+  Worker -->|"HTTPS + Idempotency-Key"| Provider["Resend API"]
+  Provider -->|"signed webhooks (Svix)"| Web
   Recipient["Recipient"] -->|"unsubscribe link"| Web
+  Cron["Optional scheduler"] -->|"POST /internal/tick"| Web
 ```
 
-The frontend is served by the same Express app, so the browser talks to one origin. That removes CORS configuration and makes cookie sessions simple and safer.
+The frontend is served by the API, so the browser talks to a single origin. That removes CORS and keeps cookie sessions simple.
 
-## 2. Backend layering
+## Code layout
 
 ```
 src/
-  server.ts            process entry: load config, start roles, handle signals
-  app.ts               builds the Express app (no listening; easy to test)
-  config/env.ts        Zod-validated environment, fails fast at startup
-  lib/                 logger, db client, small shared helpers
-  middleware/          auth, tenant context, validation, rate limits, error handler
+  server.ts              entry: config, DB, provider, worker, signals, graceful shutdown
+  app.ts                 builds the Express app; no listening, so tests can use it directly
+  config/env.ts          Zod-validated environment; the process exits on bad config
+  lib/                   db client, errors, crypto, pagination, logger, small helpers
+  middleware/            auth, CSRF, rate limits, error handler
+  email/                 provider interface, Resend client, fake provider, compose, templates
+  worker/                claim query, processor, retry policy, scheduling maths, health rules
   modules/
-    auth/              routes, service, schema (Zod), repository
-    contacts/
-    lists/
-    campaigns/
-    suppression/
-    analytics/
-    webhooks/
-  email/               provider interface, Resend implementation, fake provider, rendering
-  worker/              claim loop, message processor, retry policy, scheduler math
-  public/              static frontend
-tests/
+    auth/ workspace/ contacts/ lists/ suppression/ campaigns/
+    analytics/ unsubscribe/ webhooks/ internal/ health/ activity/
+  public/                the frontend (served as static files)
+prisma/                  schema, migrations, seed
+tests/                   unit/ and integration/ (Vitest)
+e2e/                     Playwright specs
 ```
 
-Rules:
+Each module has `*.routes.ts` (parse input, call a service, shape the response), `*.service.ts` (business rules and transactions), and `*.schemas.ts` (Zod). Services use Prisma directly. A separate repository file exists only where the query is non-trivial: `contacts.repository.ts` builds the raw SQL for the filtered contact list. A repository layer for every module would be ceremony here, so there isn't one. Pure logic with no I/O (state transitions, retry decisions, scheduling, health rules, analytics maths, templates) is in plain functions that unit tests call without a database.
 
-- **Routes** parse and validate the request, call a service, and shape the response. No business logic.
-- **Services** hold business rules and transactions. They take the authenticated workspace id as an argument and never read it from the request body.
-- **Repositories** are the only place that talks to Prisma or raw SQL. Every function takes `workspaceId`. A repository function that forgets it is a review failure.
-- A module only gets a repository layer when it has real queries. Small modules may skip it and use the shared client in the service, to avoid ceremony.
-- Pure logic (state transitions, send-time computation, retry classification, analytics maths) lives in plain functions with no I/O, so it is unit-testable without a database.
+## Request pipeline
 
-## 3. API conventions
+`pino-http` (request id) → Helmet (strict CSP) → health and webhook routes → `/api/v1`: no-store header, CSRF check, rate limit, JSON body parser → module routers → central error handler.
 
-- REST under `/api/v1`. JSON in and out. `Content-Type: application/json` is required on writes, except the CSV import which accepts `text/csv`.
-- Success: `{ "data": ..., "meta": { "nextCursor": ... } }`. Error: `{ "error": { "code": "VALIDATION_FAILED", "message": "...", "details": [...] } }`.
-- Status codes: 200, 201, 204, 400 (malformed), 401 (no session), 403 (authenticated but not allowed), 404 (not found, **also** returned for another tenant's resource, so existence is not leaked), 409 (conflict, such as a duplicate or an illegal state change), 422 (validation), 429 (rate limited).
-- Cursor pagination for lists that can grow (contacts, messages, activity). Reason: offset pagination slows down as the offset grows and drifts when rows are inserted. Trade-off: no "jump to page 7".
-- Zod schemas are the single source of truth for request shapes, and TypeScript types are derived from them with `z.infer`.
-- One error class, `AppError`, with a code and HTTP status. A central error handler turns it into the response, logs unexpected errors with the request id, and never leaks stack traces in production.
+Errors are `AppError` (status, code, message, optional field details) or `ZodError`, both rendered by one handler into `{ error: { code, message, details? } }`. Anything else becomes a generic 500 and is logged with the request id; stack traces never reach the client. Express 5 forwards rejected promises from async handlers to that handler, so route code has no try/catch boilerplate.
 
-## 4. Frontend architecture
+## Tenancy and authorization
 
-Plain ES modules, no bundler, no framework.
+Every business table carries `workspace_id`. The auth middleware resolves the session to `{ userId, workspaceId, role }` and services receive `workspaceId` as an argument. No endpoint lets the client choose a workspace. A resource that belongs to another workspace returns 404, not 403, so its existence is not revealed.
 
+The database backs this up: tables that link two tenant-owned rows use composite foreign keys that include `workspace_id`, so a cross-tenant link cannot exist even if application code forgets a filter. See [DATABASE_DESIGN.md](DATABASE_DESIGN.md).
+
+## Authentication
+
+Registration creates the user, workspace and owner membership in one transaction. Passwords use Argon2id (OWASP's minimum profile). A session is a 32-byte random token in an `HttpOnly`, `SameSite=Lax` cookie (`__Host-` prefixed and `Secure` when `APP_URL` is https). Only the SHA-256 hash of the token is stored, sessions expire after 7 idle days or 30 absolute days, and each can be revoked. Changing the password signs out every other session. Details in [SECURITY.md](SECURITY.md).
+
+## Campaign lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> running: launch (start time passed)
+  draft --> scheduled: launch (start time ahead)
+  scheduled --> running: start time arrives
+  running --> paused: pause, or bounce/complaint circuit breaker
+  scheduled --> paused: pause
+  paused --> running: resume
+  paused --> scheduled: resume (start still ahead)
+  running --> completed: no active recipients left
+  draft --> cancelled: cancel
+  scheduled --> cancelled: cancel
+  running --> cancelled: cancel
+  paused --> cancelled: cancel
+  completed --> [*]
+  cancelled --> [*]
 ```
-public/
-  index.html           single shell; loads css and js/main.js
-  css/
-    tokens.css         design tokens (colour, type, space, radius, motion)
-    base.css           reset, typography, layout primitives
-    components.css     buttons, inputs, table, badge, modal, toast...
-  js/
-    main.js            boot: auth check, mount shell, start router
-    router.js          small hash-free History API router, route table
-    api.js             fetch wrapper: JSON, error mapping, 401 handling
-    state.js           tiny store for the current user and workspace
-    ui/                toast.js, modal.js, table.js, badge.js, chart.js (SVG)
-    pages/             login.js, dashboard.js, contacts.js, campaigns.js ...
+
+Transitions live in one table (`campaigns.lifecycle.ts`) and are applied with conditional updates (`UPDATE … WHERE id = ? AND status IN (…)`), so two concurrent requests cannot both win: the second sees zero affected rows and gets a 409. Drafts are edited under optimistic locking (`version`), so two browser tabs cannot silently overwrite each other.
+
+**Launch** runs in one transaction: it flips the status, snapshots every non-suppressed contact on the list into `campaign_recipients` with `INSERT … SELECT`, and creates the first message for each. Either the campaign launches completely or not at all.
+
+## The send pipeline
+
+The queue is the `email_messages` table. A message is due when it is `scheduled`, its `run_at` has passed, and its campaign is `running`.
+
+```mermaid
+sequenceDiagram
+  participant W as Worker
+  participant DB as MySQL
+  participant P as Provider
+  loop every poll
+    W->>DB: BEGIN; SELECT due rows FOR UPDATE SKIP LOCKED
+    W->>DB: UPDATE status=sending, lease=now+5min, attempts+1; COMMIT
+    W->>DB: re-check campaign, suppression, window, daily limit
+    W->>P: send(email, Idempotency-Key = cadentra-message-<id>)
+    P-->>W: provider message id
+    W->>DB: BEGIN; status=accepted; create next step's message; COMMIT
+  end
+  P-->>DB: webhook: delivered / bounced / complained (signed)
 ```
 
-- Each page module exports `render(container, params)` and returns a cleanup function.
-- Text is inserted with `textContent` or an escaping template helper. Never `innerHTML` with user data. A strict content security policy (no inline scripts, no `eval`) is the second line of defence.
-- Charts are small hand-written SVG. At most three chart types are needed, so a charting library would be most of the weight of the page for little gain.
-- `// @ts-check` and JSDoc on the shared modules (`api.js`, `state.js`) so the editor catches mistakes without a build step. This is optional tooling, not a TypeScript migration.
+**Claim.** A short READ COMMITTED transaction selects due rows with `FOR UPDATE SKIP LOCKED`, marks them `sending` with a lease, and commits. `SKIP LOCKED` lets several workers take different rows without waiting on each other. Two details matter and are covered by tests:
 
-## 5. Authentication and sessions
+- The pool runs at READ COMMITTED. At MySQL's default REPEATABLE READ, the index range scan takes gap locks and concurrent claimers deadlock. The MariaDB driver adapter ignores Prisma's per-transaction `isolationLevel`, so the level is set when each connection opens.
+- The query pins its plan (`FORCE INDEX (idx_messages_status_run_at)` and `STRAIGHT_JOIN`). Left alone, MySQL starts from the campaigns table and sorts, which locks _every_ due row before applying `LIMIT`, and the other workers then skip all of them.
 
-- Registration creates the user, a workspace, and an `owner` membership in **one transaction**. If any insert fails, none persists.
-- Passwords: Argon2id. Login responds identically for "no such user" and "wrong password", and does comparable work in both cases to limit user enumeration by timing.
-- Session: a 32-byte random token from `crypto.randomBytes`, sent as a cookie. Only the **SHA-256 hash** of the token is stored, so a database leak does not expose live sessions. Rows hold expiry and last-seen time, and can be revoked individually.
-- Cookie attributes: `HttpOnly`, `Secure` (production), `SameSite=Lax`, `Path=/`, and the `__Host-` prefix in production.
-- CSRF: `SameSite=Lax` is the baseline. State-changing requests additionally require a JSON content type (a cross-site HTML form cannot send one) and a matching `Origin` header check. I will compare this against OWASP's CSRF cheat sheet in Phase 3 and add a synchroniser token if the review says it is needed.
-- Rate limiting: strict limit on login and registration by IP and by email, lower limits on writes, generous limits on reads. The in-memory store is acceptable for a single instance, and the limitation is documented.
+**Re-check before sending.** Between the claim and the send things change, so the processor checks again: campaign still running, address not suppressed, recipient still active, inside the sending window, under the daily limit. A message outside its window is rescheduled to the next opening without counting as an attempt. An unsubscribe therefore takes effect even for messages that were scheduled days earlier.
 
-## 6. Tenancy and authorization
+**Send and record.** The provider call carries an idempotency key derived from the message id, and it never happens inside a database transaction, so a slow provider cannot hold row locks. On success one transaction marks the message `accepted`, stores the provider id, and creates the next step's message with `run_at` computed from the step's delay and the sending window (or completes the recipient if it was the last step).
 
-Every business table carries `workspace_id`. The auth middleware loads the user's workspace membership and puts `workspaceId` and `role` on the request context. Services receive it as an argument. There is no endpoint where the client chooses a workspace id.
+**Duplicate prevention, three layers.**
 
-Defence in depth: join tables use **composite foreign keys** that include `workspace_id`, so the database itself refuses to link a contact from workspace A to a list in workspace B. Details in DATABASE_DESIGN.
+1. `UNIQUE (recipient_id, step_id)` makes a second message for the same step and person impossible.
+2. The lease: a `sending` message with an unexpired lease is not claimed again.
+3. The provider idempotency key covers the one gap nothing else can: the provider accepts the email and the worker dies before recording it. The lease expires, another worker claims the message and sends again with the same key, and the provider returns the original result without sending a second email. This holds only inside the provider's 24-hour key window, so the lease (5 minutes) is far shorter.
 
-The test suite has a dedicated authorization file: for every resource endpoint, a user from workspace B must receive 404 for workspace A's ids.
+**Retries.** The provider client classifies errors. Network failures, timeouts, 429, 409 and 5xx are retryable; other 4xx are permanent. Retryable failures back off 1 minute, 5 minutes, 30 minutes, 2 hours, honouring a longer `Retry-After`, and the message is `failed` after 5 attempts. The decision is a pure function with a table-driven test.
 
-## 7. Background processing
+**Rate limiting.** A throttle keeps the send rate under the provider's limit (Resend allows 10 requests per second per team), concurrency is configurable, and the workspace's daily limit counts accepted plus in-flight messages.
 
-### 7.1 Why a queue at all
+**Shutdown.** On SIGTERM the HTTP server stops accepting connections, the worker stops claiming and waits (up to 20 seconds) for in-flight messages, then the pool closes. A hard kill is still safe because of lease expiry plus the idempotency key.
 
-A campaign with 500 contacts must not send 500 emails inside one HTTP request. The request would time out, and a crash halfway would leave an unknown state. Instead the request only records intent (rows in `scheduled` status), and a separate loop sends them later at a controlled rate.
+## Webhooks and reconciliation
 
-### 7.2 The queue is the `email_messages` table
+`POST /webhooks/resend` reads the raw body (the signature covers the exact bytes), verifies the Svix signature and timestamp, then:
 
-A message is due when `status = 'scheduled' AND run_at <= NOW()`. The worker loop:
+1. inserts into `webhook_events` with `UNIQUE (provider, provider_event_id)`: a redelivered event is acknowledged and not reprocessed;
+2. finds the message by `provider_message_id` and applies the event only if it moves the message _forward_ (`accepted < delivered < bounced/complained/failed`), so out-of-order and duplicate events cannot move a message backwards;
+3. in one transaction, a bounce or spam report inserts a suppression and stops that recipient's remaining steps;
+4. afterwards, if the campaign's bounce or complaint rate crosses its limit (with at least 20 sends), the campaign is paused with a recorded reason, and resuming it requires explicit acknowledgement.
 
-1. **Claim.** In a short transaction: `SELECT ... WHERE status = 'scheduled' AND run_at <= NOW() ORDER BY run_at LIMIT n FOR UPDATE SKIP LOCKED`, then `UPDATE` those rows to `status = 'sending'`, `locked_by = <worker id>`, `locked_until = NOW() + 5 minutes`, `attempts = attempts + 1`. Commit. `SKIP LOCKED` lets several workers claim different rows without waiting on each other.
-2. **Re-check.** Load the contact's suppression state, the campaign state, and the contact's membership. If suppressed or paused, mark `skipped` and stop. This is why an unsubscribe takes effect even for already-scheduled messages.
-3. **Send.** Render the message and call the provider with `Idempotency-Key = message-<id>`.
-4. **Record.** On success: store `provider_message_id`, set `accepted`, and, in the **same transaction**, create the next step's message row with `run_at = accepted_at + delay`, adjusted into the sending window. On failure: apply the retry policy.
+An event for a message we cannot find yet (the webhook beat our own database write) is stored as `unmatched`, and applied by `reconcileUnmatchedEvents` as soon as the message's provider id is saved.
 
-A fallback for hosts where `SKIP LOCKED` is unavailable (possibly TiDB): claim with a single atomic `UPDATE ... WHERE id IN (...) AND status = 'scheduled'` and check the affected row count. Decided by a Phase 2 spike.
-
-### 7.3 Duplicate-send prevention (three layers)
-
-1. **Database:** `UNIQUE (campaign_recipient_id, campaign_step_id)` on `email_messages`. A step can only ever have one message row for a recipient, however many times the "create next step" code runs.
-2. **Claim:** a message in `sending` with an unexpired lease cannot be claimed by another worker.
-3. **Provider:** the `Idempotency-Key` header makes the provider return the original response for a repeated request within 24 hours. This covers the one gap nothing else can: the worker sends, the provider accepts, and the worker crashes before saving the result. The lease expires, the message is reclaimed, the same key is sent, and no second email goes out. The lease must therefore stay far below 24 hours.
-
-### 7.4 Retry policy
-
-| Outcome                                                                 | Classification  | Action                                  |
-| ----------------------------------------------------------------------- | --------------- | --------------------------------------- |
-| Network error, timeout, 5xx                                             | Transient       | Retry                                   |
-| 429                                                                     | Transient       | Retry after `retry-after` if present    |
-| 4xx other than 429 (invalid address, unverified domain, quota exceeded) | Permanent       | `failed`, no retry                      |
-| Lease expired while `sending`                                           | Unknown outcome | Retry with the **same** idempotency key |
-
-Backoff: 1 minute, 5 minutes, 30 minutes, 2 hours, then `failed` after 5 attempts. Each failure stores `last_error`. The classification is a pure function, unit-tested with a table of cases.
-
-### 7.5 Scheduling
-
-`computeRunAt(acceptedAt, delay, window, timezone)` is a pure function: add the delay, then move forward to the next allowed weekday and hour inside the workspace timezone. DST edges get explicit tests. The timezone library is chosen in Phase 7.
-
-### 7.6 Concurrency, limits, shutdown
-
-- Concurrency is a config value (default 2 in-flight sends). Sends are further limited by a token bucket so the process stays below Resend's 10 requests per second and below the workspace's daily cap. Free plan quota is 100 per day, so the default daily cap is conservative.
-- **Circuit breaker:** after at least 20 accepted messages, if a campaign's bounce rate exceeds a threshold well below Resend's 4%, the campaign is paused with a recorded reason.
-- **Graceful shutdown:** on SIGTERM or SIGINT the worker stops claiming, waits for in-flight sends to finish (bounded by a timeout), then closes the database pool and exits. A forced kill is still safe because of lease expiry plus the idempotency key.
-- Housekeeping runs in the same loop: reclaim expired leases, delete expired sessions, trim old webhook payloads.
-
-### 7.7 Why not BullMQ
-
-See D-05. In short: it would add Redis with persistence and `noeviction`, create a dual-write problem between MySQL and Redis, and cost money to host, while this workload is small. The processing function is independent of the claim loop, so swapping is possible.
-
-## 8. Email provider integration
+## Email providers
 
 ```ts
 interface EmailProvider {
-  send(message: OutboundEmail, idempotencyKey: string): Promise<SendResult>;
+  readonly name: 'resend' | 'fake';
+  send(email: OutboundEmail, idempotencyKey: string): Promise<SendResult>;
 }
 ```
 
-One interface, two implementations: `ResendProvider` and `FakeProvider` (records sends in memory, can be told to fail, used in tests and local development). This is the only abstraction in the design, and it exists because tests need to run without the network and the provider's policy makes a second provider a realistic future need.
+`ResendProvider` uses `fetch` against the documented REST API. `FakeProvider` is selected explicitly with `EMAIL_PROVIDER=fake`, sends nothing, honours idempotency keys like the real thing, can be told to fail, and simulates delivery events following Resend's test-address convention. The Settings page labels it as simulated. This is the only abstraction in the design; it exists because tests and local development need to run without a network.
 
-### Webhooks
+Every message gets a footer with the sender name, postal address, the reason the recipient is being contacted (from their consent basis), and an unsubscribe link, plus `List-Unsubscribe` and `List-Unsubscribe-Post` headers. The one-click endpoint (`POST /u/:token`) accepts the mail client's request with no cookies.
 
-`POST /webhooks/resend`:
+## Frontend
 
-1. Use `express.raw` for this route so the body is the exact bytes. A parsed-then-reserialised body breaks the signature.
-2. Verify with the Svix scheme using `svix-id`, `svix-timestamp`, `svix-signature` and the webhook secret. Reject with 400 if invalid. The timestamp check gives replay protection.
-3. Insert into `webhook_events` with `UNIQUE (provider, provider_event_id)` where the id is `svix-id`. A duplicate delivery hits the constraint and is acknowledged without reprocessing.
-4. Find the message by `provider_message_id`. Apply the status change only if the new status is **later** in the lifecycle than the current one (`accepted < delivered`, with `bounced` and `complained` as terminal). Events arrive out of order, so this rule makes processing order-insensitive.
-5. Side effects in one transaction: hard bounce or complaint inserts a suppression row and stops that recipient's remaining steps.
-6. Return 2xx only after the transaction commits, so the provider retries on failure.
+Plain ES modules with no bundler and no framework: a small History API router, a fetch wrapper, a DOM builder (`h()`) that only ever inserts text as text nodes, and one module per page. Because all content goes through `textContent`, user data cannot inject markup, and the CSP forbids inline scripts and styles as a second layer. Dynamic widths use CSS custom properties set through the CSSOM, which the CSP allows. Charts are hand-written SVG with a text summary for screen readers. Styling is a token layer (`tokens.css`) plus base, component, layout and page stylesheets; Geist is self-hosted. See [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) for the design system.
 
-The Resend webhook secret is stored in an environment variable. It is never logged.
+## Observability
 
-## 9. Security approach
-
-| Risk                             | Control                                                                                                                    |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Credential stuffing, brute force | Argon2id, rate limits on login by IP and by email, identical error messages                                                |
-| Session theft                    | HttpOnly, Secure, SameSite cookies, hashed tokens in the database, revocation, idle and absolute expiry                    |
-| CSRF                             | SameSite=Lax, JSON-only writes, Origin check, reviewed against OWASP in Phase 3                                            |
-| Broken access control, IDOR      | Workspace scoping in every repository function, composite foreign keys, 404 for foreign ids, dedicated authorization tests |
-| SQL injection                    | Prisma parameterisation. Raw SQL only through tagged templates with bound parameters                                       |
-| XSS                              | `textContent` and an escaping helper, strict CSP through Helmet, no inline scripts                                         |
-| Email header injection           | Subject and addresses validated, newlines rejected before they reach the provider                                          |
-| Template injection               | Merge fields are a fixed allow-list substituted as plain text, not an expression language                                  |
-| Abuse as a spam tool             | Consent basis required, launch gates, daily caps, bounce circuit breaker, unsubscribe on every message                     |
-| Forged webhooks                  | Svix signature verification on the raw body, timestamp tolerance                                                           |
-| CSV upload abuse                 | Size cap, row cap, `text/csv` only, no formula or file handling server-side beyond parsing, per-row validation             |
-| Secrets exposure                 | Environment variables only, validated at startup, redacted in logs, `.env` ignored by Git                                  |
-| Dependency risk                  | Few dependencies, exact pins for Prisma and TypeScript, `npm audit` in CI                                                  |
-| Denial of service                | Request body limits, rate limits, pagination caps, query timeouts                                                          |
-
-A full `SECURITY.md` is written in Phase 3 and revisited in Phase 9.
-
-## 10. Observability
-
-`pino` structured JSON logs with a request id, `pino-http` for access logs, redaction of `authorization`, cookies and any field named `password`, `token` or `secret`. Health endpoints: `/healthz` (process is up) and `/readyz` (database reachable). The worker logs each claim batch and each send outcome with the message id.
-
-## 11. Testing strategy
-
-| Level          | Tooling                       | What it covers                                                                                                                            |
-| -------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit           | Vitest                        | Pure logic: state transitions, `computeRunAt`, retry classification, suppression rules, analytics maths, validators                       |
-| Integration    | Vitest, Supertest, real MySQL | Auth, authorization across tenants, contacts and CSV import, campaign lifecycle, the claim loop, webhook processing, using `FakeProvider` |
-| End to end     | Playwright                    | Register, import contacts, build and schedule a campaign, watch statuses change, unsubscribe                                              |
-| Manual sandbox | Resend test addresses         | `delivered@`, `bounced@`, `complained@` verify the real integration once in Phase 7 and again after deployment                            |
-
-Integration tests need MySQL. Locally that is a Docker Compose service. In CI it is a GitHub Actions service container.
-
-Quality gates per phase: type check, lint, format check, tests, build. Nothing is pushed red.
-
-## 12. Deployment topology (provisional)
-
-One container image from a `Dockerfile`, one MySQL database, environment variables for configuration, an HTTPS endpoint, `/healthz` for the platform check. Provider choice and cost are decided in Phase 10 (see D-14 and the hosting table in RESEARCH).
+Structured JSON logs (pino) with a request id, secrets redacted. `/healthz` reports that the process is up; `/readyz` also checks the database. The worker logs each run that did work, with outcome counts, and each provider failure with its message id.

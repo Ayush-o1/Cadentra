@@ -214,3 +214,13 @@ Open tracking and click tracking, reply detection, mailbox connection (Gmail or 
 - OWASP Top Ten: https://owasp.org/www-project-top-ten/
 - Instantly help center, creating a campaign: https://help.instantly.ai/en/articles/6386134-creating-a-campaign
 - Aiven free MySQL status: https://aiven.io/free-mysql-database
+
+## 9. Addendum: what implementation confirmed or changed
+
+Added after the build. The original text above is left as written.
+
+- **Confirmed.** Resend's policy, test addresses and idempotency documentation matched what the integration needed. `FOR UPDATE SKIP LOCKED` works on MySQL 8.4 for the claim pattern.
+- **Corrected.** Prisma 7's MariaDB adapter does not apply the per-transaction `isolationLevel` option (section 4.2 did not anticipate this), and the generated client needs `importFileExtension = "js"` to run from compiled output. `svix`'s `verify` returns nothing on success.
+- **Still unverified.** TiDB's behaviour for composite foreign keys, CHECK constraints and `SKIP LOCKED`; Render's free-tier behaviour; any hosting price; Resend's handling of an unverified account; Resend's webhook retry schedule. DEPLOYMENT.md lists the spike that settles the database question.
+- **Typography.** Geist is available as an npm package under the SIL Open Font License, so it is self-hosted.
+- **Dependency versions** were as listed in section 4 on 2026-11-14 and are pinned exactly in `package-lock.json`. `typescript` is held at 6.0.x because `typescript-eslint` does not yet support 7.
