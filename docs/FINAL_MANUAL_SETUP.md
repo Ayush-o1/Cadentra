@@ -1,12 +1,23 @@
 # Final manual setup
 
-Everything that can be done without your accounts is already done and pushed. This list is **only** what needs you: creating accounts, copying secrets, clicking through three dashboards, and watching the real thing work. About 60 to 90 minutes.
+Everything that can be done without your accounts is already done and pushed to a branch. This list is **only** what needs you: creating accounts, copying secrets, clicking through three dashboards, and watching the real thing work. About 60 to 90 minutes.
 
 **Rules for secrets.** Never paste an API key, password, database URL or token into a chat, an issue, a commit or a file in this repository. Put them only into the hosting dashboards and your own shell. If a step says "set in your shell", use a leading space before the command so most shells keep it out of history.
 
 **Nothing here costs money.** If any site asks for a credit card or offers an "upgrade", stop: that is a paid commitment and was not part of the plan.
 
 Order matters, because later steps need values from earlier ones.
+
+---
+
+## 0. Merge the pull request
+
+All the work after your last push (account recovery, the TiDB-safe queue claim, the Docker shutdown fix, the new docs) is on the branch `chore/final-hardening`, in **pull request #1**: <https://github.com/Ayush-o1/Cadentra/pull/1>. GitHub Actions already ran on it and passed (verify and image jobs). `main` was deliberately not changed without your say-so.
+
+1. Open the pull request, check **Checks** is green, and press **Merge pull request** (a regular merge or rebase is fine; any option keeps history).
+2. Then, in your terminal: `git checkout main && git pull`.
+
+Render deploys from `main`, so do this before step 3. Everything below assumes `main` contains these changes.
 
 ---
 
