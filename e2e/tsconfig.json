@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "lib": ["es2023", "dom"] },
+  "include": [
+    "./**/*.ts",
+    "../playwright.config.ts",
+    "../src/modules/unsubscribe/unsubscribe.token.ts"
+  ]
+}
