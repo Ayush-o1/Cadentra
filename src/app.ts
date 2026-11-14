@@ -103,7 +103,7 @@ export function createApp({ config, logger, db, worker }: AppDeps): Express {
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.get('/{*path}', (req, res, next) => {
     const wantsPage = req.get('accept')?.includes('text/html') ?? false;
-    const isPage = wantsPage && !path.extname(req.path) && !req.path.startsWith('/api/');
+    const isPage = wantsPage && !req.path.startsWith('/api/');
     if (isPage) res.sendFile(path.join(publicDir, 'index.html'));
     else next();
   });

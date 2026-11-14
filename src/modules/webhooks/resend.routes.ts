@@ -24,9 +24,8 @@ export function createResendWebhookRouter(config: Config, db: Db): Router {
     if (!secret) throw new AppError(404, 'NOT_FOUND', 'Route not found');
 
     const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
-    let verified: unknown;
     try {
-      verified = new Webhook(secret).verify(raw, {
+      new Webhook(secret).verify(raw, {
         'svix-id': req.get('svix-id') ?? '',
         'svix-timestamp': req.get('svix-timestamp') ?? '',
         'svix-signature': req.get('svix-signature') ?? '',
@@ -35,7 +34,7 @@ export function createResendWebhookRouter(config: Config, db: Db): Router {
       throw new AppError(400, 'INVALID_SIGNATURE', 'The webhook signature could not be verified');
     }
 
-    const payload = payloadSchema.parse(verified);
+    const payload = payloadSchema.parse(JSON.parse(raw));
     const created = payload.created_at ? new Date(payload.created_at) : new Date();
     const outcome = await recordProviderEvent(db, {
       provider: 'resend',
