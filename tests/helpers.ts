@@ -1,4 +1,6 @@
-import type { Response } from 'supertest';
+import type { Express } from 'express';
+import request, { type Response } from 'supertest';
+import { createApp } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config/env.js';
 import { createDb, type Db } from '../src/lib/db.js';
 import { createLogger } from '../src/lib/logger.js';
@@ -41,3 +43,41 @@ export type ErrorBody = {
 export function errorBody(res: Response): ErrorBody {
   return (res.body as { error: ErrorBody }).error;
 }
+
+export type TestApp = { app: Express; db: Db; config: Config };
+
+export function buildTestApp(
+  overrides: Record<string, string> = {},
+  tweak?: (config: Config) => Config,
+): TestApp {
+  const baseConfig = testConfig(overrides);
+  const config = tweak ? tweak(baseConfig) : baseConfig;
+  const db = testDb();
+  return { app: createApp({ config, logger: testLogger(), db }), db, config };
+}
+
+export type Credentials = { name: string; email: string; password: string };
+
+let userCounter = 0;
+export function newCredentials(): Credentials {
+  userCounter += 1;
+  return {
+    name: `Test User ${userCounter}`,
+    email: `user${userCounter}-${Date.now()}@example.org`,
+    password: 'a-long-test-password',
+  };
+}
+
+/** Registers a user through the API and returns a supertest agent that carries the session cookie. */
+export async function registerAgent(app: Express, credentials = newCredentials()) {
+  const agent = request.agent(app);
+  const res = await agent.post('/api/v1/auth/register').send(credentials);
+  if (res.status !== 201)
+    throw new Error(`Registration failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return { agent, credentials, identity: (res.body as { data: Identity }).data };
+}
+
+export type Identity = {
+  user: { id: number; email: string; name: string };
+  workspace: { id: number; name: string; role: 'owner' | 'member' };
+};

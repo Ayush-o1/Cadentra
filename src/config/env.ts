@@ -45,6 +45,16 @@ const envSchema = z
     }
   });
 
+export type RateLimit = { windowMs: number; limit: number };
+export type RateLimits = {
+  api: RateLimit;
+  loginPerIp: RateLimit;
+  loginPerAccount: RateLimit;
+  register: RateLimit;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export type Config = {
   env: 'development' | 'test' | 'production';
   isProduction: boolean;
@@ -54,6 +64,13 @@ export type Config = {
   appUrl: string;
   appSecret: string;
   trustProxy: boolean;
+  session: {
+    cookieName: string;
+    secureCookie: boolean;
+    idleTimeoutMs: number;
+    absoluteTimeoutMs: number;
+  };
+  rateLimits: RateLimits;
   worker: {
     enabled: boolean;
     pollMs: number;
@@ -85,6 +102,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     );
   }
   const env = parsed.data;
+  const secureCookie = env.APP_URL.startsWith('https://');
   return {
     env: env.NODE_ENV,
     isProduction: env.NODE_ENV === 'production',
@@ -94,6 +112,14 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     appUrl: env.APP_URL.replace(/\/+$/, ''),
     appSecret: env.APP_SECRET,
     trustProxy: env.TRUST_PROXY,
+    session: {
+      // The __Host- prefix makes browsers reject the cookie unless it is Secure, host-only and Path=/.
+      cookieName: secureCookie ? '__Host-cadentra_sid' : 'cadentra_sid',
+      secureCookie,
+      idleTimeoutMs: 7 * DAY_MS,
+      absoluteTimeoutMs: 30 * DAY_MS,
+    },
+    rateLimits: defaultRateLimits(env.NODE_ENV === 'test'),
     worker: {
       enabled: env.RUN_WORKER,
       pollMs: env.WORKER_POLL_MS,
@@ -106,5 +132,19 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       resendApiKey: env.RESEND_API_KEY,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET,
     },
+  };
+}
+
+function defaultRateLimits(relaxed: boolean): RateLimits {
+  const minutes = (count: number) => count * 60 * 1000;
+  if (relaxed) {
+    const generous = { windowMs: minutes(15), limit: 100_000 };
+    return { api: generous, loginPerIp: generous, loginPerAccount: generous, register: generous };
+  }
+  return {
+    api: { windowMs: minutes(1), limit: 600 },
+    loginPerIp: { windowMs: minutes(15), limit: 30 },
+    loginPerAccount: { windowMs: minutes(15), limit: 5 },
+    register: { windowMs: minutes(60), limit: 10 },
   };
 }

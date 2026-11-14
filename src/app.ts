@@ -1,13 +1,18 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import express, { type Express } from 'express';
+import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import type { Config } from './config/env.js';
 import type { Db } from './lib/db.js';
 import type { Logger } from './lib/logger.js';
+import { createRequireAuth } from './middleware/auth.js';
+import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { createRateLimiter } from './middleware/rate-limit.js';
+import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
+import { createWorkspaceRouter } from './modules/workspace/workspace.routes.js';
 
 export type AppDeps = {
   config: Config;
@@ -62,6 +67,16 @@ export function createApp({ config, logger, db }: AppDeps): Express {
   );
 
   app.use(createHealthRouter(db));
+
+  const requireAuth = createRequireAuth(config, db);
+  const api = Router();
+  api.use(csrfProtection);
+  api.use(createRateLimiter(config.rateLimits.api));
+  api.use(express.json({ limit: '100kb' }));
+  api.use(createAuthRouter(config, db));
+  api.use(createWorkspaceRouter(config, db, requireAuth));
+  app.use('/api/v1', api);
+
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { TEST_DATABASE_URL } from './helpers.js';
 
 export default function setup(): void {
-  const env = { ...process.env, DATABASE_URL: TEST_DATABASE_URL };
+  const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: TEST_DATABASE_URL };
   delete env['SHADOW_DATABASE_URL'];
   try {
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], { env, encoding: 'utf8', stdio: 'pipe' });
