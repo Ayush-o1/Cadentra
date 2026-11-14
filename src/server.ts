@@ -1,8 +1,10 @@
 import type { Server } from 'node:http';
 import { createApp } from './app.js';
 import { ConfigError, loadConfig } from './config/env.js';
+import { createEmailProvider } from './email/index.js';
 import { createDb } from './lib/db.js';
 import { createLogger } from './lib/logger.js';
+import { createWorker } from './worker/worker.js';
 
 const SHUTDOWN_TIMEOUT_MS = 15_000;
 
@@ -20,10 +22,13 @@ function main(): void {
 
   const logger = createLogger(config);
   const db = createDb(config.databaseUrl);
-  const app = createApp({ config, logger, db });
+  const provider = createEmailProvider(config, db, logger);
+  const worker = createWorker({ db, provider, config, logger });
+  const app = createApp({ config, logger, db, provider, worker });
   const server: Server = app.listen(config.port, () => {
     logger.info({ port: config.port, env: config.env }, 'Cadentra is listening');
   });
+  if (config.worker.enabled) worker.start();
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
@@ -38,14 +43,14 @@ function main(): void {
     forceExit.unref();
 
     server.close((error) => {
-      if (error) {
-        logger.error({ err: error }, 'Error while closing the HTTP server');
-        process.exit(1);
-      }
-      db.$disconnect().then(
-        () => process.exit(0),
-        () => process.exit(1),
-      );
+      if (error) logger.error({ err: error }, 'Error while closing the HTTP server');
+      worker
+        .stop()
+        .then(() => db.$disconnect())
+        .then(
+          () => process.exit(error ? 1 : 0),
+          () => process.exit(1),
+        );
     });
     server.closeIdleConnections();
   };

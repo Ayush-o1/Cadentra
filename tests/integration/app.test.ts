@@ -2,13 +2,19 @@ import express from 'express';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
+import { FakeProvider } from '../../src/email/fake.provider.js';
 import { AppError, conflict, validationFailed } from '../../src/lib/errors.js';
 import { errorHandler } from '../../src/middleware/error-handler.js';
 import { errorBody, testConfig, testDb, testLogger } from '../helpers.js';
 
 describe('app foundation', () => {
   const db = testDb();
-  const app = createApp({ config: testConfig(), logger: testLogger(), db });
+  const app = createApp({
+    config: testConfig(),
+    logger: testLogger(),
+    db,
+    provider: new FakeProvider(),
+  });
 
   afterAll(async () => {
     await db.$disconnect();

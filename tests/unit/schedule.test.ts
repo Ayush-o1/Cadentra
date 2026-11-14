@@ -88,6 +88,14 @@ describe('nextAllowedTime', () => {
 });
 
 describe('computeRunAt', () => {
+  it('keeps seconds and milliseconds so a delay is exact', () => {
+    const base = iso('2026-11-17T10:00:37.482Z');
+    expect(computeRunAt(base, 3, businessHours('UTC'))).toEqual(iso('2026-11-20T10:00:37.482Z'));
+    expect(computeRunAt(base, 3, businessHours('Asia/Kolkata'))).toEqual(
+      iso('2026-11-20T10:00:37.482Z'),
+    );
+  });
+
   it('adds calendar days and keeps the local time of day', () => {
     const base = iso('2026-11-17T10:00:00Z'); // Tuesday
     expect(computeRunAt(base, 2, businessHours('UTC'))).toEqual(iso('2026-11-19T10:00:00Z'));

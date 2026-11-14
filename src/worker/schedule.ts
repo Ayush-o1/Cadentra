@@ -124,7 +124,7 @@ export function computeRunAt(base: Date, delayDays: number, window: SendWindow):
   if (delayDays === 0) return nextAllowedTime(base, window);
   const local = localParts(base, window.timeZone);
   const date = addCalendarDays(local.year, local.month, local.day, delayDays);
-  const target = zonedTimeToUtc(
+  const sameMinute = zonedTimeToUtc(
     date.year,
     date.month,
     date.day,
@@ -132,5 +132,6 @@ export function computeRunAt(base: Date, delayDays: number, window: SendWindow):
     local.minute,
     window.timeZone,
   );
-  return nextAllowedTime(target, window);
+  const subMinuteMs = local.second * 1000 + base.getUTCMilliseconds();
+  return nextAllowedTime(new Date(sameMinute.getTime() + subMinuteMs), window);
 }

@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import request, { type Response } from 'supertest';
 import { createApp } from '../src/app.js';
+import { FakeProvider } from '../src/email/fake.provider.js';
 import { loadConfig, type Config } from '../src/config/env.js';
 import { createDb, type Db } from '../src/lib/db.js';
 import { createLogger } from '../src/lib/logger.js';
@@ -9,7 +10,7 @@ export const TEST_DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ?? 'mysql://cadentra:cadentra@127.0.0.1:3307/cadentra_test';
 
 export function testConfig(overrides: Record<string, string> = {}): Config {
-  return loadConfig({
+  const config = loadConfig({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL,
     APP_SECRET: 'test-secret-that-is-at-least-32-characters-long',
@@ -17,6 +18,8 @@ export function testConfig(overrides: Record<string, string> = {}): Config {
     RUN_WORKER: 'false',
     ...overrides,
   });
+  // Tests should not wait on the real send throttle or poll interval.
+  return { ...config, worker: { ...config.worker, maxSendsPerSecond: 1000, pollMs: 50 } };
 }
 
 export function testLogger() {
@@ -44,7 +47,7 @@ export function errorBody(res: Response): ErrorBody {
   return (res.body as { error: ErrorBody }).error;
 }
 
-export type TestApp = { app: Express; db: Db; config: Config };
+export type TestApp = { app: Express; db: Db; config: Config; provider: FakeProvider };
 
 export function buildTestApp(
   overrides: Record<string, string> = {},
@@ -53,7 +56,8 @@ export function buildTestApp(
   const baseConfig = testConfig(overrides);
   const config = tweak ? tweak(baseConfig) : baseConfig;
   const db = testDb();
-  return { app: createApp({ config, logger: testLogger(), db }), db, config };
+  const provider = new FakeProvider();
+  return { app: createApp({ config, logger: testLogger(), db, provider }), db, config, provider };
 }
 
 export type Credentials = { name: string; email: string; password: string };

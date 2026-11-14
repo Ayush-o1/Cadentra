@@ -1,5 +1,5 @@
 import type { Request, RequestHandler } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import type { RateLimit } from '../config/env.js';
 import { tooManyRequests } from '../lib/errors.js';
 
@@ -15,7 +15,7 @@ export function createRateLimiter(
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     skipSuccessfulRequests,
-    ...(key ? { keyGenerator: (req) => key(req) ?? req.ip ?? 'unknown' } : {}),
+    ...(key ? { keyGenerator: (req) => key(req) ?? ipKeyGenerator(req.ip ?? 'unknown') } : {}),
     handler: () => {
       throw tooManyRequests();
     },
