@@ -1,0 +1,13 @@
+:root {
+  --bg-page: #f7f6f2;
+  --bg-surface: #ffffff;
+  --text: #1b211f;
+  --primary: #0f5c4d;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
