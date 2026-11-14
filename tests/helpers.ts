@@ -16,6 +16,9 @@ export function testConfig(overrides: Record<string, string> = {}): Config {
     APP_SECRET: 'test-secret-that-is-at-least-32-characters-long',
     APP_URL: 'http://localhost:3000',
     RUN_WORKER: 'false',
+    // `TEST_CLAIM_MODE=conditional-update npm run test:integration` runs the suite with the
+    // queue claim that does not need SKIP LOCKED.
+    ...(process.env['TEST_CLAIM_MODE'] ? { QUEUE_CLAIM_MODE: process.env['TEST_CLAIM_MODE'] } : {}),
     ...overrides,
   });
   // Tests should not wait on the real send throttle or poll interval.

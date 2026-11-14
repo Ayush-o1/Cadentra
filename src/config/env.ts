@@ -19,6 +19,7 @@ const envSchema = z
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
     WORKER_MAX_SENDS_PER_SECOND: z.coerce.number().min(0.1).max(10).default(5),
     TICK_TOKEN: z.string().min(24).optional(),
+    QUEUE_CLAIM_MODE: z.enum(['skip-locked', 'conditional-update']).default('skip-locked'),
 
     EMAIL_PROVIDER: z.enum(['fake', 'resend']).default('fake'),
     RESEND_API_KEY: z.string().min(1).optional(),
@@ -76,6 +77,7 @@ export type Config = {
     pollMs: number;
     concurrency: number;
     maxSendsPerSecond: number;
+    claimMode: 'skip-locked' | 'conditional-update';
     tickToken: string | undefined;
   };
   email: {
@@ -125,6 +127,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       pollMs: env.WORKER_POLL_MS,
       concurrency: env.WORKER_CONCURRENCY,
       maxSendsPerSecond: env.WORKER_MAX_SENDS_PER_SECOND,
+      claimMode: env.QUEUE_CLAIM_MODE,
       tickToken: env.TICK_TOKEN,
     },
     email: {

@@ -276,7 +276,7 @@ describe('connection settings', () => {
   });
 });
 
-describe('claimDueMessages', () => {
+describe.each(['skip-locked', 'conditional-update'] as const)('claimDueMessages (%s)', (mode) => {
   async function seedMessages(count: number, campaignStatus: 'running' | 'paused' = 'running') {
     const ws = await createWorkspace(db);
     const { campaign, steps, recipients } = await createCampaignWithRecipients(db, ws.id, {
@@ -302,7 +302,7 @@ describe('claimDueMessages', () => {
     const now = new Date();
     const claims = await Promise.all(
       ['worker-a', 'worker-b', 'worker-c', 'worker-d'].map((workerId) =>
-        claimDueMessages(db, { now, limit: 10, workerId, leaseMs: 60_000 }),
+        claimDueMessages(db, { now, limit: 10, workerId, leaseMs: 60_000, mode }),
       ),
     );
     const ids = claims.flat().map((message) => message.id);
@@ -319,6 +319,7 @@ describe('claimDueMessages', () => {
       limit: 5,
       workerId: 'w1',
       leaseMs: 90_000,
+      mode,
     });
     expect(claimed?.attempts).toBe(1);
     const row = await db.emailMessage.findUniqueOrThrow({ where: { id: claimed!.id } });
@@ -333,14 +334,14 @@ describe('claimDueMessages', () => {
       data: { runAt: new Date(Date.now() + 3_600_000) },
     });
     expect(
-      await claimDueMessages(db, { now: new Date(), limit: 5, workerId: 'w', leaseMs: 1000 }),
+      await claimDueMessages(db, { now: new Date(), limit: 5, workerId: 'w', leaseMs: 1000, mode }),
     ).toEqual([]);
   });
 
   it('never claims messages of a paused campaign', async () => {
     await seedMessages(3, 'paused');
     expect(
-      await claimDueMessages(db, { now: new Date(), limit: 5, workerId: 'w', leaseMs: 1000 }),
+      await claimDueMessages(db, { now: new Date(), limit: 5, workerId: 'w', leaseMs: 1000, mode }),
     ).toEqual([]);
   });
 
@@ -352,6 +353,7 @@ describe('claimDueMessages', () => {
       limit: 5,
       workerId: 'crashed',
       leaseMs: 60_000,
+      mode,
     });
     expect(first).toHaveLength(2);
 
@@ -360,6 +362,7 @@ describe('claimDueMessages', () => {
       limit: 5,
       workerId: 'other',
       leaseMs: 60_000,
+      mode,
     });
     expect(stillLeased).toEqual([]);
 
@@ -368,6 +371,7 @@ describe('claimDueMessages', () => {
       limit: 5,
       workerId: 'other',
       leaseMs: 60_000,
+      mode,
     });
     expect(afterExpiry.map((m) => m.attempts)).toEqual([2, 2]);
   });

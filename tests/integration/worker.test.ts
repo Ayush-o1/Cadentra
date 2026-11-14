@@ -379,30 +379,37 @@ describe('duplicate-send prevention', () => {
     expect(recovered).toMatchObject({ status: 'accepted', providerMessageId, attempts: 2 });
   });
 
-  it('never hands one message to two workers running at the same time', async () => {
-    class CountingProvider implements EmailProvider {
-      readonly name = 'fake' as const;
-      readonly calls: string[] = [];
-      async send(email: OutboundEmail, key: string): Promise<SendResult> {
-        this.calls.push(key);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        return { providerMessageId: `count_${key}` };
+  it.each(['skip-locked', 'conditional-update'] as const)(
+    'never hands one message to two workers running at the same time (%s)',
+    async (mode) => {
+      class CountingProvider implements EmailProvider {
+        readonly name = 'fake' as const;
+        readonly calls: string[] = [];
+        async send(email: OutboundEmail, key: string): Promise<SendResult> {
+          this.calls.push(key);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return { providerMessageId: `count_${key}` };
+        }
       }
-    }
-    const { campaignId } = await launchScenario(app, { contacts: 30 });
-    const provider = new CountingProvider();
+      const { campaignId } = await launchScenario(app, { contacts: 30 });
+      const provider = new CountingProvider();
+      const modeCtx = {
+        ...ctx,
+        config: { ...config, worker: { ...config.worker, claimMode: mode } },
+      };
 
-    await Promise.all([
-      workerFor(ctx, provider).runOnce(),
-      workerFor(ctx, provider).runOnce(),
-      workerFor(ctx, provider).runOnce(),
-    ]);
+      await Promise.all([
+        workerFor(modeCtx, provider).runOnce(),
+        workerFor(modeCtx, provider).runOnce(),
+        workerFor(modeCtx, provider).runOnce(),
+      ]);
 
-    expect(provider.calls).toHaveLength(30);
-    expect(new Set(provider.calls).size).toBe(30);
-    const stepOne = (await messagesOf(campaignId)).filter((m) => m.step.position === 1);
-    expect(stepOne.every((m) => m.status === 'accepted' && m.attempts === 1)).toBe(true);
-  });
+      expect(provider.calls).toHaveLength(30);
+      expect(new Set(provider.calls).size).toBe(30);
+      const stepOne = (await messagesOf(campaignId)).filter((m) => m.step.position === 1);
+      expect(stepOne.every((m) => m.status === 'accepted' && m.attempts === 1)).toBe(true);
+    },
+  );
 });
 
 describe('worker lifecycle', () => {

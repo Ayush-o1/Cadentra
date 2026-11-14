@@ -78,6 +78,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         limit: config.worker.concurrency,
         workerId,
         leaseMs: LEASE_MS,
+        mode: config.worker.claimMode,
       });
       if (claimed.length === 0) break;
       summary.claimed += claimed.length;
