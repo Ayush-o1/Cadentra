@@ -388,7 +388,7 @@ async function main() {
                 : 'delivered',
         daysAgo: 5 - (i % 4),
       };
-    if (s === 1 && i % 53 !== 0 && i % 41 !== 0)
+    if (s === 1 && i % 53 !== 0)
       return {
         status: i % 5 === 0 ? 'scheduled' : i % 2 === 0 ? 'delivered' : 'accepted',
         ...(i % 5 === 0 ? { daysAhead: 1 + (i % 3) } : { daysAgo: 1 }),
@@ -401,7 +401,7 @@ async function main() {
     launchedDaysAgo: 24,
   });
   await enrol(waitlist.campaign.id, waitlist.stepRows, eligible(lists.waitlist.id), (i, s) => ({
-    status: i % 31 === 0 ? 'bounced' : i % 4 === 0 && s === 2 ? 'accepted' : 'delivered',
+    status: i % 47 === 0 ? 'bounced' : i % 4 === 0 && s === 2 ? 'accepted' : 'delivered',
     daysAgo: 22 - s * 4 - (i % 3),
   }));
 
