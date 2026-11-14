@@ -85,6 +85,7 @@ jobs:
           docker run -d --name cadentra --network host \
             -e DATABASE_URL=mysql://cadentra:cadentra@127.0.0.1:3306/cadentra \
             -e APP_SECRET="$(openssl rand -hex 32)" \
+            -e APP_URL=https://app.example.org -e TRUST_PROXY=1 \
             -e PORT=3400 cadentra:ci
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:3400/healthz && break; sleep 1; done
           node scripts/smoke-test.mjs http://127.0.0.1:3400
