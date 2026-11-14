@@ -27,6 +27,15 @@ export function isRetryableStatus(status: number): boolean {
   return status === 429 || status === 409 || status >= 500;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTHLY_QUOTA_WAIT_MS = 6 * 60 * 60 * 1000;
+
+/** The free plan's daily quota resets at 00:00 UTC. */
+function msUntilNextUtcMidnight(now: Date): number {
+  const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return dayStart + DAY_MS - now.getTime() + 60_000;
+}
+
 export class ResendProvider implements EmailProvider {
   readonly name = 'resend' as const;
 
@@ -74,6 +83,33 @@ export class ResendProvider implements EmailProvider {
 
     const detail = (await response.json().catch(() => ({}))) as ResendError;
     const message = `Resend responded ${response.status}${detail.message ? `: ${detail.message}` : ''}`;
-    throw new ProviderError(message, isRetryableStatus(response.status), retryAfterMs(response));
+    const code = typeof detail.name === 'string' ? detail.name : undefined;
+
+    // Resend's documented error names (https://resend.com/docs/api-reference/errors).
+    if (code === 'daily_quota_exceeded') {
+      throw new ProviderError(message, true, msUntilNextUtcMidnight(new Date()), {
+        quota: true,
+        code,
+      });
+    }
+    if (code === 'monthly_quota_exceeded') {
+      throw new ProviderError(message, true, MONTHLY_QUOTA_WAIT_MS, { quota: true, code });
+    }
+    if (code === 'invalid_idempotent_request') {
+      // Same key, different body: an earlier attempt may have been sent and the email has since
+      // changed. Retrying can never succeed and sending under a new key could duplicate it.
+      throw new ProviderError(
+        `${message}. An earlier attempt may already have been sent; check the Resend logs before sending again.`,
+        false,
+        undefined,
+        { code },
+      );
+    }
+    throw new ProviderError(
+      message,
+      isRetryableStatus(response.status),
+      retryAfterMs(response),
+      code ? { code } : {},
+    );
   }
 }

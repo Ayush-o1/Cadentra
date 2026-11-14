@@ -1,4 +1,7 @@
+import { randomBytes } from 'node:crypto';
 import { expect, type Page } from '@playwright/test';
+import { generateToken, sha256Hex } from '../src/lib/crypto.js';
+import { createDb } from '../src/lib/db.js';
 import { createUnsubscribeToken } from '../src/modules/unsubscribe/unsubscribe.token.js';
 
 export const APP_SECRET = 'e2e-secret-that-is-at-least-32-characters-long';
@@ -7,7 +10,7 @@ export const PASSWORD = 'an-e2e-test-password';
 let counter = 0;
 export function uniqueEmail(label = 'user'): string {
   counter += 1;
-  return `${label}-${Date.now()}-${counter}@example.org`;
+  return `${label}-${Date.now()}-${counter}-${randomBytes(3).toString('hex')}@example.org`;
 }
 
 export async function register(page: Page, options: { name?: string; email?: string } = {}) {
@@ -45,3 +48,34 @@ export function csvFile(rows: string[]) {
 
 export const unsubscribeTokenFor = (messageId: number) =>
   createUnsubscribeToken(APP_SECRET, messageId);
+
+const DATABASE_URL =
+  process.env['TEST_DATABASE_URL'] ?? 'mysql://cadentra:cadentra@127.0.0.1:3307/cadentra_test';
+
+/**
+ * Stands in for opening the e-mailed link: the simulated provider sends nothing a browser test can
+ * read, so this plants a token for the user exactly as the server would and returns the secret.
+ * Only the SHA-256 hash is stored, as in production.
+ */
+export async function plantAuthToken(
+  email: string,
+  purpose: 'password_reset' | 'email_verification',
+  expiresInMs = 60 * 60 * 1000,
+): Promise<string> {
+  const db = createDb(DATABASE_URL);
+  try {
+    const user = await db.user.findUniqueOrThrow({ where: { email } });
+    const token = generateToken();
+    await db.authToken.create({
+      data: {
+        userId: user.id,
+        purpose,
+        tokenHash: sha256Hex(token),
+        expiresAt: new Date(Date.now() + expiresInMs),
+      },
+    });
+    return token;
+  } finally {
+    await db.$disconnect();
+  }
+}

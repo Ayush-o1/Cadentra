@@ -27,7 +27,8 @@
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "test:e2e": "playwright test",
     "smoke": "node scripts/smoke-test.mjs",
-    "db:compat": "tsx --env-file-if-exists=.env scripts/db-compat-check.ts"
+    "db:compat": "tsx --env-file-if-exists=.env scripts/db-compat-check.ts",
+    "resend:live": "tsx scripts/resend-live-check.ts"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "7.10.1",

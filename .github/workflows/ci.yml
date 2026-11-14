@@ -30,8 +30,8 @@ jobs:
     env:
       TEST_DATABASE_URL: mysql://cadentra:cadentra@127.0.0.1:3307/cadentra_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -51,7 +51,7 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-results
           path: |
@@ -62,6 +62,35 @@ jobs:
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: cadentra
+          MYSQL_USER: cadentra
+          MYSQL_PASSWORD: cadentra
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t cadentra:ci .
+      - name: Run the image against MySQL, then smoke test and stop it
+        run: |
+          docker run -d --name cadentra --network host \
+            -e DATABASE_URL=mysql://cadentra:cadentra@127.0.0.1:3306/cadentra \
+            -e APP_SECRET="$(openssl rand -hex 32)" \
+            -e PORT=3400 cadentra:ci
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3400/healthz && break; sleep 1; done
+          node scripts/smoke-test.mjs http://127.0.0.1:3400
+          test "$(docker exec cadentra id -u)" != "0"
+          docker stop --time 20 cadentra
+          test "$(docker inspect -f '{{.State.ExitCode}}' cadentra)" = "0"
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs cadentra

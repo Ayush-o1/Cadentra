@@ -64,6 +64,16 @@ async function main(): Promise<void> {
   const isTidb = /tidb/i.test(v ?? '');
   record('Server', 'INFO', `${v}${isTidb ? '  (TiDB detected)' : ''}`);
 
+  try {
+    const cipher = await db.$queryRawUnsafe<{ Value: string }[]>(
+      "SHOW SESSION STATUS LIKE 'Ssl_cipher'",
+    );
+    const value = cipher[0]?.Value;
+    record('Connection encryption', 'INFO', value ? `TLS in use (${value})` : 'NOT encrypted');
+  } catch {
+    record('Connection encryption', 'INFO', 'could not be determined on this server');
+  }
+
   const { level } = one(
     await db.$queryRawUnsafe<{ level: string }[]>('SELECT @@transaction_isolation AS level'),
   );

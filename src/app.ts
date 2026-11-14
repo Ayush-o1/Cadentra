@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import type { Config } from './config/env.js';
 import type { EmailProvider } from './email/provider.js';
+import { createSystemMailer } from './email/system-mail.js';
 import type { Db } from './lib/db.js';
 import type { Logger } from './lib/logger.js';
 import type { Worker } from './worker/worker.js';
@@ -37,7 +38,7 @@ export type AppDeps = {
 
 const publicDir = path.join(import.meta.dirname, 'public');
 
-export function createApp({ config, logger, db, worker }: AppDeps): Express {
+export function createApp({ config, logger, db, provider, worker }: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -49,7 +50,8 @@ export function createApp({ config, logger, db, worker }: AppDeps): Express {
         req: (req: { id: unknown; method: string; url: string }) => ({
           id: req.id,
           method: req.method,
-          url: req.url,
+          // Unsubscribe tokens are credentials for one address; keep them out of the logs.
+          url: req.url.replace(/(\/(?:u|public\/unsubscribe)\/)[^/?#]+/, '$1[token]'),
         }),
         res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
       },
@@ -102,12 +104,16 @@ export function createApp({ config, logger, db, worker }: AppDeps): Express {
   api.use(createRateLimiter(config.rateLimits.api));
   api.use(express.json({ limit: '100kb' }));
   api.use(createUnsubscribeApiRouter(config, db));
-  api.use(createAuthRouter(config, db));
+  api.use(createAuthRouter(config, db, createSystemMailer(provider, config, logger)));
   api.use(createWorkspaceRouter(config, db, requireAuth));
   api.use(createContactsRouter(db, requireAuth));
   api.use(createListsRouter(db, requireAuth));
   api.use(createSuppressionRouter(db, requireAuth));
-  api.use(createCampaignsRouter(db, requireAuth));
+  api.use(
+    createCampaignsRouter(db, requireAuth, {
+      requireVerifiedEmail: config.auth.requireVerifiedEmail,
+    }),
+  );
   api.use(createAnalyticsRouter(db, requireAuth));
   app.use('/api/v1', api);
 

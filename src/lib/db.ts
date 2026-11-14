@@ -24,9 +24,23 @@ export function createDb(databaseUrl: string): Db {
     idleTimeout: 240,
     minimumIdle: 2,
     initSql: 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED',
-    ssl: url.searchParams.get('ssl') === 'true' ? { rejectUnauthorized: true } : undefined,
+    ssl: tlsOptions(url),
   });
   return new PrismaClient({ adapter });
+}
+
+/**
+ * `?ssl=true` or Prisma's `?sslaccept=strict` turn on TLS with certificate verification, which
+ * hosted MySQL services require. `?sslaccept=accept_invalid_certs` skips verification and exists
+ * only for self-signed development servers.
+ */
+export function tlsOptions(url: URL): { rejectUnauthorized: boolean } | undefined {
+  const accept = url.searchParams.get('sslaccept');
+  if (accept === 'accept_invalid_certs') return { rejectUnauthorized: false };
+  if (url.searchParams.get('ssl') === 'true' || accept === 'strict') {
+    return { rejectUnauthorized: true };
+  }
+  return undefined;
 }
 
 export function isUniqueViolation(error: unknown): boolean {

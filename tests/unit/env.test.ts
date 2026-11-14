@@ -35,8 +35,45 @@ describe('loadConfig', () => {
       EMAIL_PROVIDER: 'resend',
       RESEND_API_KEY: 're_test',
       RESEND_WEBHOOK_SECRET: 'whsec_test',
+      SYSTEM_EMAIL_FROM: 'Cadentra <system@example.org>',
     });
     expect(config.email.provider).toBe('resend');
+    expect(config.email.systemFrom).toBe('Cadentra <system@example.org>');
+  });
+
+  it('needs a sender for its own emails when sending for real, and rejects multi-line values', () => {
+    const resend = {
+      ...validEnv,
+      EMAIL_PROVIDER: 'resend',
+      RESEND_API_KEY: 're_test',
+      RESEND_WEBHOOK_SECRET: 'whsec_test',
+    };
+    expect(() => loadConfig(resend)).toThrow(/SYSTEM_EMAIL_FROM/);
+    expect(() =>
+      loadConfig({ ...resend, SYSTEM_EMAIL_FROM: 'a@example.org\r\nBcc: x@example.org' }),
+    ).toThrow(/single line/);
+  });
+
+  it('does not require a verified email unless asked', () => {
+    expect(loadConfig(validEnv).auth.requireVerifiedEmail).toBe(false);
+    expect(
+      loadConfig({ ...validEnv, REQUIRE_VERIFIED_EMAIL: 'true' }).auth.requireVerifiedEmail,
+    ).toBe(true);
+  });
+
+  it('defaults the queue claim to SKIP LOCKED and accepts the alternative', () => {
+    expect(loadConfig(validEnv).worker.claimMode).toBe('skip-locked');
+    expect(
+      loadConfig({ ...validEnv, QUEUE_CLAIM_MODE: 'conditional-update' }).worker.claimMode,
+    ).toBe('conditional-update');
+    expect(() => loadConfig({ ...validEnv, QUEUE_CLAIM_MODE: 'nope' })).toThrow(/QUEUE_CLAIM_MODE/);
+  });
+
+  it('takes a number of proxies, never trust-everything', () => {
+    expect(loadConfig(validEnv).trustProxy).toBe(false);
+    expect(loadConfig({ ...validEnv, TRUST_PROXY: 'true' }).trustProxy).toBe(1);
+    expect(loadConfig({ ...validEnv, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(() => loadConfig({ ...validEnv, TRUST_PROXY: 'yes' })).toThrow(/TRUST_PROXY/);
   });
 
   it('rejects a non-https APP_URL in production', () => {

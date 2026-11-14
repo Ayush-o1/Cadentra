@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: TRUST_PROXY
-        value: 'true'
+        value: '1'
       - key: EMAIL_PROVIDER
         value: resend
       - key: RUN_WORKER

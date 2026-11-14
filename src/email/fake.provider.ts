@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProviderError } from './provider.js';
+import { SYSTEM_KEY_PREFIX } from './system-mail.js';
 import { type EmailProvider, type OutboundEmail, type SendResult } from './provider.js';
 
 export type SimulatedEvent = {
@@ -45,7 +46,10 @@ export class FakeProvider implements EmailProvider {
     const result = { providerMessageId: `fake_${randomUUID()}` };
     this.results.set(idempotencyKey, result);
     this.sent.push({ email, idempotencyKey, providerMessageId: result.providerMessageId });
-    this.simulateEvents(email.to, result.providerMessageId);
+    // System mail (password reset, verification) is not part of any campaign: no delivery events.
+    if (!idempotencyKey.startsWith(SYSTEM_KEY_PREFIX)) {
+      this.simulateEvents(email.to, result.providerMessageId);
+    }
     return Promise.resolve(result);
   }
 

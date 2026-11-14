@@ -325,6 +325,25 @@ describe('failures and retries', () => {
     expect(provider.sent).toHaveLength(0);
   });
 
+  it('waits for the provider quota to reset without using up an attempt', async () => {
+    const { campaignId } = await launchScenario(app, { contacts: 2 });
+    const provider = new FakeProvider();
+    const quota = new ProviderError('Resend responded 429: quota', true, 3 * 3_600_000, {
+      quota: true,
+    });
+    provider.failNext(quota, quota);
+    const before = Date.now();
+
+    const summary = await workerFor(ctx, provider).runOnce();
+
+    expect(summary).toMatchObject({ claimed: 2, rescheduled: 2, failed: 0, accepted: 0 });
+    for (const message of await messagesOf(campaignId)) {
+      expect(message).toMatchObject({ status: 'scheduled', attempts: 0, lockedBy: null });
+      expect(message.runAt.getTime()).toBeGreaterThanOrEqual(before + 3 * 3_600_000);
+      expect(message.lastError).toContain('quota');
+    }
+  });
+
   it('keeps going when the provider crashes with an unexpected error', async () => {
     const { campaignId } = await launchScenario(app, { contacts: 2 });
     const exploding: EmailProvider = {

@@ -41,7 +41,7 @@ function aside() {
   );
 }
 
-function layout(container, card) {
+export function layout(container, card) {
   mount(
     container,
     h('div', { class: 'auth' }, h('div', { class: 'auth-form-side' }, card), aside()),
@@ -66,7 +66,12 @@ export function loginPage({ container, query, navigate }) {
   });
   const submit = h('button', { type: 'submit', class: 'btn btn-primary btn-block' }, 'Sign in');
 
-  const form = h('form', { novalidate: true }, email.el, password.el, submit);
+  const forgot = h(
+    'p',
+    { class: 'auth-switch' },
+    h('a', { href: '/forgot-password' }, 'Forgot your password?'),
+  );
+  const form = h('form', { novalidate: true }, email.el, password.el, forgot, submit);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     clearErrors(form);
@@ -93,6 +98,13 @@ export function loginPage({ container, query, navigate }) {
       h('a', { class: 'brand', href: '/login' }, brandMark(), 'Cadentra'),
       h('h1', null, 'Sign in'),
       h('p', { class: 'lead' }, 'Pick up where your campaigns left off.'),
+      query.get('reset') === '1' &&
+        h(
+          'div',
+          { class: 'alert alert-success', role: 'status' },
+          icon('check-circle'),
+          h('div', { class: 'alert-body' }, 'Password updated. Sign in with your new password.'),
+        ),
       form,
       h(
         'p',

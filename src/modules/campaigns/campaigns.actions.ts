@@ -2,7 +2,7 @@ import type { Db } from '../../lib/db.js';
 import { AppError, conflict, notFound } from '../../lib/errors.js';
 import { nextAllowedTime, type SendWindow } from '../../worker/schedule.js';
 import { recordActivity } from '../activity/activity.service.js';
-import { launchBlockers } from '../workspace/workspace.service.js';
+import { accountBlockers, launchBlockers } from '../workspace/workspace.service.js';
 import {
   allowedFrom,
   AUTO_PAUSE_PREFIX,
@@ -20,7 +20,11 @@ const versionConflict = () =>
     'VERSION_CONFLICT',
   );
 
-export function createCampaignActions(db: Db, detail: Detail) {
+export function createCampaignActions(
+  db: Db,
+  detail: Detail,
+  options: { requireVerifiedEmail: boolean },
+) {
   async function rejectTransition(
     workspaceId: number,
     id: number,
@@ -48,7 +52,11 @@ export function createCampaignActions(db: Db, detail: Detail) {
       if (campaign.version !== version) throw versionConflict();
 
       const workspace = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
-      const blockers = launchBlockers(workspace);
+      const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+      const blockers = [
+        ...accountBlockers(user, options.requireVerifiedEmail),
+        ...launchBlockers(workspace),
+      ];
       const firstStep = campaign.steps[0];
       if (campaign.listId === null) blockers.push('Choose a list to send to');
       else if ((await countEligibleRecipients(db, workspaceId, campaign.listId)) === 0) {

@@ -146,7 +146,19 @@ export async function recordProviderEvent(db: Db, event: ProviderEvent): Promise
     ],
     skipDuplicates: true,
   });
-  if (inserted.count === 0) return 'duplicate';
+  if (inserted.count === 0) {
+    // A redelivery of an event we stored but could not apply (a database error halfway through,
+    // or its message was not known yet) must get another chance, or the provider's retry would
+    // be swallowed as a duplicate and the message would stay stale forever. Applying is
+    // idempotent: statuses only move forward.
+    const existing = await db.webhookEvent.findUnique({
+      where: {
+        provider_providerEventId: { provider: event.provider, providerEventId: event.eventId },
+      },
+      select: { status: true },
+    });
+    if (existing?.status !== 'unmatched') return 'duplicate';
+  }
   return applyStoredEvent(db, event);
 }
 

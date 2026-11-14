@@ -22,8 +22,19 @@ export function launchBlockers(
   return blockers;
 }
 
+/** Account-level reasons a campaign may not launch, when the deployment asks for a verified email. */
+export function accountBlockers(
+  user: { emailVerifiedAt: Date | null },
+  requireVerifiedEmail: boolean,
+): string[] {
+  return requireVerifiedEmail && !user.emailVerifiedAt
+    ? ['Confirm your email address (use the link we sent, or send a new one from Settings)']
+    : [];
+}
+
 export function createWorkspaceService(db: Db, config: Config) {
-  async function describe(workspaceId: number, role: 'owner' | 'member') {
+  async function describe(workspaceId: number, role: 'owner' | 'member', userId: number) {
+    const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
     const workspace = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
     const sentToday = await db.emailMessage.count({
       where: { workspaceId, acceptedAt: { gte: startOfUtcDay(new Date()) } },
@@ -42,7 +53,10 @@ export function createWorkspaceService(db: Db, config: Config) {
       weekdaysOnly: workspace.weekdaysOnly,
       dailySendLimit: workspace.dailySendLimit,
       sentToday,
-      launchBlockers: launchBlockers(workspace),
+      launchBlockers: [
+        ...accountBlockers(user, config.auth.requireVerifiedEmail),
+        ...launchBlockers(workspace),
+      ],
       provider: {
         name: config.email.provider,
         simulated: config.email.provider === 'fake',
@@ -71,7 +85,7 @@ export function createWorkspaceService(db: Db, config: Config) {
         entityId: workspaceId,
         metadata: { fields: Object.keys(input) },
       });
-      return describe(workspaceId, 'owner');
+      return describe(workspaceId, 'owner', userId);
     },
   };
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Config } from '../../config/env.js';
 import { safeEqual } from '../../lib/crypto.js';
 import { AppError, unauthorized } from '../../lib/errors.js';
+import { createRateLimiter } from '../../middleware/rate-limit.js';
 import type { Worker } from '../../worker/worker.js';
 
 /**
@@ -12,7 +13,9 @@ export function createTickRouter(config: Config, worker: Worker): Router {
   const router = Router();
   const token = config.worker.tickToken;
 
-  router.post('/internal/tick', async (req, res) => {
+  // A legitimate scheduler calls this every few minutes; the limit only slows token guessing.
+  const limit = createRateLimiter({ windowMs: 60_000, limit: 30 });
+  router.post('/internal/tick', limit, async (req, res) => {
     if (!token) throw new AppError(404, 'NOT_FOUND', 'Route not found');
     const header = req.get('authorization') ?? '';
     const supplied = header.startsWith('Bearer ') ? header.slice(7) : '';
