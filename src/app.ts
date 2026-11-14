@@ -81,14 +81,23 @@ export function createApp({ config, logger, db, worker }: AppDeps): Express {
     }),
   );
 
+  app.use((_req, res, next) => {
+    res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    next();
+  });
   app.use(createHealthRouter(db));
   // These routes read their own raw bodies or take no cookies, so they sit outside the JSON API.
   app.use(createResendWebhookRouter(config, db));
+  app.use('/u', createRateLimiter(config.rateLimits.api));
   app.use(createOneClickUnsubscribeRouter(config, db));
   if (worker) app.use(createTickRouter(config, worker));
 
   const requireAuth = createRequireAuth(config, db);
   const api = Router();
+  api.use((_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
   api.use(csrfProtection);
   api.use(createRateLimiter(config.rateLimits.api));
   api.use(express.json({ limit: '100kb' }));
@@ -102,7 +111,17 @@ export function createApp({ config, logger, db, worker }: AppDeps): Express {
   api.use(createAnalyticsRouter(db, requireAuth));
   app.use('/api/v1', api);
 
-  app.use(express.static(publicDir, { index: 'index.html' }));
+  app.use(
+    express.static(publicDir, {
+      index: 'index.html',
+      setHeaders: (res, filePath) => {
+        // Fonts never change under the same name; everything else is revalidated by ETag.
+        if (filePath.includes(`${path.sep}fonts${path.sep}`)) {
+          res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }),
+  );
   app.get('/{*path}', (req, res, next) => {
     const wantsPage = req.get('accept')?.includes('text/html') ?? false;
     const isPage = wantsPage && !req.path.startsWith('/api/');

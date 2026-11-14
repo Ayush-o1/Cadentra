@@ -38,6 +38,14 @@ describe('small formatters', () => {
     expect(csvCell(null)).toBe('""');
   });
 
+  it('neutralises spreadsheet formulas in exported cells', () => {
+    expect(csvCell('=HYPERLINK("http://evil")')).toBe('"\'=HYPERLINK(""http://evil"")"');
+    expect(csvCell('+1 555')).toBe('"\'+1 555"');
+    expect(csvCell('-2')).toBe('"\'-2"');
+    expect(csvCell('@SUM(A1)')).toBe('"\'@SUM(A1)"');
+    expect(csvCell('safe-text')).toBe('"safe-text"');
+  });
+
   it('describes activity in plain words', () => {
     expect(
       describeActivity({

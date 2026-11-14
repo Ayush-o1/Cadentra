@@ -32,6 +32,12 @@ describe('app foundation', () => {
     expect(res.body).toEqual({ status: 'ok', database: 'up' });
   });
 
+  it('never lets API responses be cached', async () => {
+    const res = await request(app).get('/api/v1/auth/session');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['permissions-policy']).toContain('camera=()');
+  });
+
   it('returns a JSON 404 for unknown routes', async () => {
     const res = await request(app).get('/nope');
     expect(res.status).toBe(404);

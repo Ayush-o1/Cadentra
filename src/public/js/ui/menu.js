@@ -23,7 +23,7 @@ export function menuButton({
     {
       type: 'button',
       class: buttonClass,
-      'aria-label': label,
+      'aria-label': trigger ? null : label,
       'aria-haspopup': 'menu',
       'aria-expanded': 'false',
       'aria-controls': menuId,

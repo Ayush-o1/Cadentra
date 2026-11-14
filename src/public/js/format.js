@@ -124,4 +124,12 @@ export function downloadText(filename, text, type = 'text/csv') {
   URL.revokeObjectURL(url);
 }
 
-export const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+/**
+ * Quotes a CSV cell. A value that starts with = + - or @ would be run as a formula by spreadsheet
+ * apps, so it is prefixed with an apostrophe (OWASP's CSV injection guidance).
+ */
+export function csvCell(value) {
+  const text = String(value ?? '');
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+}

@@ -111,7 +111,7 @@ function buildShell() {
     trigger: h(
       'span',
       { class: 'row' },
-      h('span', { class: 'avatar' }, initials(state.user.name)),
+      h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(state.user.name)),
       h(
         'span',
         { class: 'who' },

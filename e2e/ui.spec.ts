@@ -63,7 +63,7 @@ test('modals trap focus and close with Escape; menus work from the keyboard', as
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
 
-  await page.getByRole('button', { name: 'Account menu' }).focus();
+  await page.locator('.user-button').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Settings' })).toBeFocused();
   await page.keyboard.press('ArrowDown');

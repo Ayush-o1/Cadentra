@@ -11,7 +11,7 @@ test('sign in, sign out and protected pages', async ({ page }) => {
   await expect(page.getByText('Enter your name')).toBeVisible();
 
   await register(page, { email });
-  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page.locator('.user-button').click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/login$/);
 
