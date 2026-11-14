@@ -11,7 +11,10 @@ import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createRateLimiter } from './middleware/rate-limit.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
+import { createContactsRouter } from './modules/contacts/contacts.routes.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
+import { createListsRouter } from './modules/lists/lists.routes.js';
+import { createSuppressionRouter } from './modules/suppression/suppression.routes.js';
 import { createWorkspaceRouter } from './modules/workspace/workspace.routes.js';
 
 export type AppDeps = {
@@ -75,6 +78,9 @@ export function createApp({ config, logger, db }: AppDeps): Express {
   api.use(express.json({ limit: '100kb' }));
   api.use(createAuthRouter(config, db));
   api.use(createWorkspaceRouter(config, db, requireAuth));
+  api.use(createContactsRouter(db, requireAuth));
+  api.use(createListsRouter(db, requireAuth));
+  api.use(createSuppressionRouter(db, requireAuth));
   app.use('/api/v1', api);
 
   app.use(express.static(publicDir, { index: 'index.html' }));
