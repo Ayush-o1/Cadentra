@@ -28,23 +28,29 @@ All API responses carry `Cache-Control: no-store`.
 
 **Status codes.** 200, 201, 204; 400 malformed; 401 not signed in; 403 not allowed; 404 not found; 409 conflict; 413 body too large; 415 wrong content type; 422 validation failed; 429 rate limited.
 
-**Error codes** (non-exhaustive): `VALIDATION_FAILED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `CONTACT_EXISTS`, `LIST_EXISTS`, `LIST_IN_USE`, `SUPPRESSION_LOCKED`, `VERSION_CONFLICT`, `CAMPAIGN_LOCKED`, `INVALID_TRANSITION`, `LAUNCH_BLOCKED`, `BOUNCE_RATE_ACK_REQUIRED`, `INVALID_CURSOR`, `RATE_LIMITED`, `CSRF_REJECTED`.
+**Error codes** (non-exhaustive): `VALIDATION_FAILED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `CONTACT_EXISTS`, `LIST_EXISTS`, `LIST_IN_USE`, `SUPPRESSION_LOCKED`, `VERSION_CONFLICT`, `CAMPAIGN_LOCKED`, `INVALID_TRANSITION`, `LAUNCH_BLOCKED`, `INVALID_TOKEN`, `BOUNCE_RATE_ACK_REQUIRED`, `INVALID_CURSOR`, `RATE_LIMITED`, `CSRF_REJECTED`.
 
 ## Auth and account
 
-| Method and path                   | Notes                                                                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `POST /auth/register`             | `{ name, email, password (10–128), workspaceName? }` → 201 identity, sets the cookie. 409 `EMAIL_TAKEN`                 |
-| `POST /auth/login`                | `{ email, password }` → identity. Wrong email and wrong password give the same 401. Rate limited per IP and per account |
-| `POST /auth/logout`               | 204, clears the cookie                                                                                                  |
-| `GET /auth/session`               | 200 with the identity, or `{ "data": null }` when signed out. Used on every page load                                   |
-| `GET /auth/me` 🔒                 | The identity, or 401                                                                                                    |
-| `PATCH /account/profile` 🔒       | `{ name }`                                                                                                              |
-| `POST /account/password` 🔒       | `{ currentPassword, newPassword }` → 204. Signs out every other session                                                 |
-| `GET /account/sessions` 🔒        | Your sessions, with `current` flagged                                                                                   |
-| `DELETE /account/sessions/:id` 🔒 | Revoke one of your sessions                                                                                             |
+| Method and path                       | Notes                                                                                                                                                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /auth/register`                 | `{ name, email, password (10–128), workspaceName? }` → 201 identity, sets the cookie. 409 `EMAIL_TAKEN`                                                                                                |
+| `POST /auth/login`                    | `{ email, password }` → identity. Wrong email and wrong password give the same 401. Rate limited per IP and per account                                                                                |
+| `POST /auth/forgot-password`          | `{ email }` → 202 `{ accepted: true }` **whether or not the address has an account**. Emails a one-hour link. Rate limited per IP (10 an hour) and per address (3 an hour)                             |
+| `POST /auth/reset-password`           | `{ token, newPassword }` → 204. The token is single use; 400 `INVALID_TOKEN` if unknown, expired, used or of another kind. Signs out every session of the account and counts as confirming the address |
+| `POST /auth/verify-email`             | `{ token }` → 204. 400 `INVALID_TOKEN` as above. Tokens last 24 hours                                                                                                                                  |
+| `POST /account/verification-email` 🔒 | 202 `{ sent }`; `sent` is false when the address is already confirmed. Limited to 5 an hour                                                                                                            |
+| `POST /auth/logout`                   | 204, clears the cookie                                                                                                                                                                                 |
+| `GET /auth/session`                   | 200 with the identity, or `{ "data": null }` when signed out. Used on every page load                                                                                                                  |
+| `GET /auth/me` 🔒                     | The identity, or 401                                                                                                                                                                                   |
+| `PATCH /account/profile` 🔒           | `{ name }`                                                                                                                                                                                             |
+| `POST /account/password` 🔒           | `{ currentPassword, newPassword }` → 204. Signs out every other session                                                                                                                                |
+| `GET /account/sessions` 🔒            | Your sessions, with `current` flagged                                                                                                                                                                  |
+| `DELETE /account/sessions/:id` 🔒     | Revoke one of your sessions                                                                                                                                                                            |
 
-Identity: `{ user: { id, email, name }, workspace: { id, name, role } }`.
+Identity: `{ user: { id, email, name, emailVerified }, workspace: { id, name, role } }`.
+
+The reset and confirmation emails link to `/reset-password#token=…` and `/verify-email#token=…`. The secret is in the URL _fragment_, which browsers never send to a server, so it stays out of access logs and `Referer` headers; the pages read it with JavaScript, post it to the endpoints above, and remove it from the address bar.
 
 ## Workspace
 

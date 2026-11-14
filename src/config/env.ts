@@ -119,7 +119,9 @@ export class ConfigError extends Error {
   }
 }
 
-export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
+export function loadConfig(raw: NodeJS.ProcessEnv = process.env): Config {
+  // `KEY=` in a .env file or a blank field in a hosting dashboard means "not set", not "empty".
+  const source = Object.fromEntries(Object.entries(raw).filter(([, value]) => value !== ''));
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new ConfigError(

@@ -16,6 +16,14 @@ services:
         value: resend
       - key: RUN_WORKER
         value: 'true'
+      # TiDB (the free MySQL-compatible database) has no SKIP LOCKED. Use 'skip-locked' on real MySQL.
+      - key: QUEUE_CLAIM_MODE
+        value: conditional-update
+      # Polling less often saves the free database's request-unit allowance.
+      - key: WORKER_POLL_MS
+        value: '10000'
+      - key: REQUIRE_VERIFIED_EMAIL
+        value: 'false'
       - key: APP_URL
         sync: false
       - key: DATABASE_URL
@@ -24,6 +32,9 @@ services:
         generateValue: true
       - key: TICK_TOKEN
         generateValue: true
+      # Sender of password-reset and verification mail, for example "Cadentra <onboarding@resend.dev>"
+      - key: SYSTEM_EMAIL_FROM
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_WEBHOOK_SECRET

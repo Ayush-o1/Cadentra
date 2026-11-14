@@ -14,7 +14,7 @@ flowchart LR
     Worker["Worker<br/>claim, check, send, record"]
   end
   Web -->|SQL| DB[("MySQL 8.4")]
-  Worker -->|"claim with SKIP LOCKED"| DB
+  Worker -->|"claim (SKIP LOCKED or conditional UPDATE)"| DB
   Worker -->|"HTTPS + Idempotency-Key"| Provider["Resend API"]
   Provider -->|"signed webhooks (Svix)"| Web
   Recipient["Recipient"] -->|"unsubscribe link"| Web
@@ -59,7 +59,9 @@ The database backs this up: tables that link two tenant-owned rows use composite
 
 ## Authentication
 
-Registration creates the user, workspace and owner membership in one transaction. Passwords use Argon2id (OWASP's minimum profile). A session is a 32-byte random token in an `HttpOnly`, `SameSite=Lax` cookie (`__Host-` prefixed and `Secure` when `APP_URL` is https). Only the SHA-256 hash of the token is stored, sessions expire after 7 idle days or 30 absolute days, and each can be revoked. Changing the password signs out every other session. Details in [SECURITY.md](SECURITY.md).
+Registration creates the user, workspace and owner membership in one transaction and sends an email-confirmation link. Passwords use Argon2id (OWASP's minimum profile). A session is a 32-byte random token in an `HttpOnly`, `SameSite=Lax` cookie (`__Host-` prefixed and `Secure` when `APP_URL` is https). Only the SHA-256 hash of the token is stored, sessions expire after 7 idle days or 30 absolute days, and each can be revoked. Changing the password signs out every other session. Details in [SECURITY.md](SECURITY.md).
+
+**Account recovery.** Password-reset and email-confirmation links carry a single-use token in the URL fragment (never sent to the server, so never in logs). Only its SHA-256 is stored in `auth_tokens`, with an expiry; spending it is a conditional update inside the transaction that changes the password, so two simultaneous uses cannot both win. The forgot-password endpoint answers identically for known and unknown addresses and sends the email after responding. These messages go through the same provider interface as campaigns, from `SYSTEM_EMAIL_FROM`, with no unsubscribe footer and no delivery simulation; a failure is logged and swallowed. A reset also confirms the address, and `REQUIRE_VERIFIED_EMAIL` can make confirmation a launch requirement.
 
 ## Campaign lifecycle
 
@@ -111,6 +113,8 @@ sequenceDiagram
 - The pool runs at READ COMMITTED. At MySQL's default REPEATABLE READ, the index range scan takes gap locks and concurrent claimers deadlock. The MariaDB driver adapter ignores Prisma's per-transaction `isolationLevel`, so the level is set when each connection opens.
 - The query pins its plan (`FORCE INDEX (idx_messages_status_run_at)` and `STRAIGHT_JOIN`). Left alone, MySQL starts from the campaigns table and sorts, which locks _every_ due row before applying `LIMIT`, and the other workers then skip all of them.
 
+**Claim without `SKIP LOCKED`.** With `QUEUE_CLAIM_MODE=conditional-update` (for TiDB and other MySQL-compatible databases that lack it) the claim reads candidate ids with no locks, shuffles them inside a small window, and claims each with a single `UPDATE … WHERE id = ? AND <still due> AND <campaign still running>`. The affected-row count decides who owns the message, so there is no multi-statement transaction and nothing depends on the isolation level. Contention errors (deadlock, write conflict) count as losing the race. The same tests run against both modes on MySQL. See [TIDB_COMPATIBILITY.md](TIDB_COMPATIBILITY.md).
+
 **Re-check before sending.** Between the claim and the send things change, so the processor checks again: campaign still running, address not suppressed, recipient still active, inside the sending window, under the daily limit. A message outside its window is rescheduled to the next opening without counting as an attempt. An unsubscribe therefore takes effect even for messages that were scheduled days earlier.
 
 **Send and record.** The provider call carries an idempotency key derived from the message id, and it never happens inside a database transaction, so a slow provider cannot hold row locks. On success one transaction marks the message `accepted`, stores the provider id, and creates the next step's message with `run_at` computed from the step's delay and the sending window (or completes the recipient if it was the last step).
@@ -121,11 +125,11 @@ sequenceDiagram
 2. The lease: a `sending` message with an unexpired lease is not claimed again.
 3. The provider idempotency key covers the one gap nothing else can: the provider accepts the email and the worker dies before recording it. The lease expires, another worker claims the message and sends again with the same key, and the provider returns the original result without sending a second email. This holds only inside the provider's 24-hour key window, so the lease (5 minutes) is far shorter.
 
-**Retries.** The provider client classifies errors. Network failures, timeouts, 429, 409 and 5xx are retryable; other 4xx are permanent. Retryable failures back off 1 minute, 5 minutes, 30 minutes, 2 hours, honouring a longer `Retry-After`, and the message is `failed` after 5 attempts. The decision is a pure function with a table-driven test.
+**Retries.** The provider client classifies errors. Network failures, timeouts, 429, 409 and 5xx are retryable; other 4xx are permanent, with two refinements from Resend's documented error names: a daily or monthly quota error reschedules the message (daily: to 00:00 UTC) without using up an attempt, and an idempotency-key conflict (`invalid_idempotent_request`) is permanent, because retrying could duplicate an email that was already sent. Retryable failures back off 1 minute, 5 minutes, 30 minutes, 2 hours, honouring a longer `Retry-After`, and the message is `failed` after 5 attempts. The decision is a pure function with a table-driven test.
 
 **Rate limiting.** A throttle keeps the send rate under the provider's limit (Resend allows 10 requests per second per team), concurrency is configurable, and the workspace's daily limit counts accepted plus in-flight messages.
 
-**Shutdown.** On SIGTERM the HTTP server stops accepting connections, the worker stops claiming and waits (up to 20 seconds) for in-flight messages, then the pool closes. A hard kill is still safe because of lease expiry plus the idempotency key.
+**Shutdown.** On SIGTERM the HTTP server stops accepting connections, the worker stops claiming and waits (up to 10 seconds) for in-flight messages, then the pool closes; a 15-second timer forces exit if anything hangs. In the container, node runs as PID 1 (`exec node …` after the migration step) so it actually receives the signal; before that was fixed, `docker stop` waited out its grace period and killed the process (exit 137). A hard kill is still safe because of lease expiry plus the idempotency key.
 
 ## Webhooks and reconciliation
 
@@ -136,7 +140,7 @@ sequenceDiagram
 3. in one transaction, a bounce or spam report inserts a suppression and stops that recipient's remaining steps;
 4. afterwards, if the campaign's bounce or complaint rate crosses its limit (with at least 20 sends), the campaign is paused with a recorded reason, and resuming it requires explicit acknowledgement.
 
-An event for a message we cannot find yet (the webhook beat our own database write) is stored as `unmatched`, and applied by `reconcileUnmatchedEvents` as soon as the message's provider id is saved.
+An event for a message we cannot find yet (the webhook beat our own database write) is stored as `unmatched`, and applied by `reconcileUnmatchedEvents` as soon as the message's provider id is saved. A redelivery of an event that was stored but never applied (a crash between the two steps) is applied rather than discarded as a duplicate. Events that stay unmatched for a week, such as ones for account-recovery email sent through the same provider account, are deleted by the worker's housekeeping.
 
 ## Email providers
 

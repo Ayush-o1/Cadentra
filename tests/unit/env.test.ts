@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../../src/config/env.js';
 
@@ -86,5 +88,29 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...validEnv, APP_URL: 'https://app.example.org/' }).appUrl).toBe(
       'https://app.example.org',
     );
+  });
+
+  it('treats blank values as unset', () => {
+    const config = loadConfig({ ...validEnv, TICK_TOKEN: '', RESEND_API_KEY: '', LOG_LEVEL: '' });
+    expect(config.worker.tickToken).toBeUndefined();
+    expect(config.logLevel).toBe('info');
+    expect(() => loadConfig({ ...validEnv, APP_SECRET: '' })).toThrow(/APP_SECRET/);
+  });
+
+  it('loads .env.example as shipped once APP_SECRET is filled in', () => {
+    const shipped = parseEnv(readFileSync('.env.example', 'utf8'));
+    expect(() => loadConfig({ ...shipped, APP_SECRET: 'x'.repeat(32) })).not.toThrow();
+  });
+
+  it('loads .env.production.example once its secrets and https URL are filled in', () => {
+    const shipped = parseEnv(readFileSync('.env.production.example', 'utf8'));
+    const config = loadConfig({
+      ...shipped,
+      DATABASE_URL: 'mysql://u:p@db:3306/cadentra',
+      APP_SECRET: 'x'.repeat(32),
+      EMAIL_PROVIDER: 'fake',
+    });
+    expect(config.isProduction).toBe(true);
+    expect(config.trustProxy).toBe(1);
   });
 });

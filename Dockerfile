@@ -25,4 +25,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # Applies pending migrations, then starts the server. Fine for a single instance; with several
 # instances run `npx prisma migrate deploy` once as a release step instead.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+# `exec` replaces the shell with node, so node is PID 1 and receives SIGTERM from `docker stop` or the
+# platform. Without it the shell swallows the signal and the container is killed after the grace period.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]

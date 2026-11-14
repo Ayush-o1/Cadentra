@@ -106,7 +106,7 @@ Across Instantly, Smartlead and lemlist the product areas repeat: lead data, out
 | BullMQ 6.7.6 is current. Its docs now list a **PostgreSQL backend**. There is no MySQL backend                                                                                                                             | Verified                 | npm registry and docs navigation     |
 | MySQL 8.x supports `SELECT ... FOR UPDATE SKIP LOCKED`. A locked row is removed from the result set, and the manual says it "may be used to avoid lock contention when multiple sessions access the same queue-like table" | Verified                 | MySQL 8.4 manual, "Locking Reads"    |
 | The same manual warns that SKIP LOCKED returns "an inconsistent view of the data" and is "not suitable for general transactional work"                                                                                     | Verified                 | same page                            |
-| TiDB supports `SELECT FOR UPDATE`. I could **not** confirm `SKIP LOCKED` support                                                                                                                                           | Secondary / Not verified | search results only                  |
+| TiDB supports `SELECT FOR UPDATE`. I could **not** confirm `SKIP LOCKED` support at the time of writing. **Later resolved:** TiDB's compatibility page lists it as unsupported (see TIDB_COMPATIBILITY.md)                 | Secondary / Not verified | search results only                  |
 
 **Recommendation:** a **MySQL-backed queue**, where the `email_messages` table is the queue. Reasons:
 

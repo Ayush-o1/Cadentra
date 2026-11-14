@@ -123,15 +123,21 @@ async function claimByConditionalUpdate(db: Db, options: ClaimOptions): Promise<
   const claimed: number[] = [];
   for (const id of candidates) {
     if (claimed.length >= limit) break;
-    const affected = await db.$executeRaw`
-      UPDATE email_messages
-      SET status = 'sending', locked_by = ${workerId}, locked_until = ${lockedUntil},
-          attempts = attempts + 1, updated_at = ${now}
-      WHERE id = ${id}
-        AND ((status = 'scheduled' AND run_at <= ${now})
-          OR (status = 'sending' AND locked_until < ${now}))
-        AND campaign_id IN (SELECT id FROM campaigns WHERE status = 'running')`;
-    if (affected === 1) claimed.push(id);
+    try {
+      const affected = await db.$executeRaw`
+        UPDATE email_messages
+        SET status = 'sending', locked_by = ${workerId}, locked_until = ${lockedUntil},
+            attempts = attempts + 1, updated_at = ${now}
+        WHERE id = ${id}
+          AND ((status = 'scheduled' AND run_at <= ${now})
+            OR (status = 'sending' AND locked_until < ${now}))
+          AND campaign_id IN (SELECT id FROM campaigns WHERE status = 'running')`;
+      if (affected === 1) claimed.push(id);
+    } catch (error) {
+      // Another worker got there first and the database reported it as an error instead of
+      // re-checking the row (a write conflict or deadlock victim). Not ours; try the next one.
+      if (!isContentionError(error)) throw error;
+    }
   }
   if (claimed.length === 0) return [];
 
@@ -140,6 +146,12 @@ async function claimByConditionalUpdate(db: Db, options: ClaimOptions): Promise<
     select: { id: true, attempts: true },
     orderBy: { id: 'asc' },
   });
+}
+
+/** MySQL deadlock (1213), lock wait timeout (1205) and TiDB write conflict (9007, 8022, 8028). */
+export function isContentionError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /\b(1213|1205|9007|8022|8028)\b|deadlock|lock wait timeout|write conflict/i.test(text);
 }
 
 function shuffle<T>(items: T[]): T[] {
