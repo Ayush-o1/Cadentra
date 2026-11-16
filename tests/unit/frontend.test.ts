@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { hourLabel, summarize, windowSentence } from '../../src/public/js/campaign-utils.js';
 import {
+  consentChange,
   csvCell,
   describeActivity,
   formatPercent,
   fullName,
   initials,
 } from '../../src/public/js/format.js';
+import { latestOnly } from '../../src/public/js/dom.js';
 import { defineRoutes, resolve } from '../../src/public/js/router.js';
 
 describe('formatPercent', () => {
@@ -128,5 +130,37 @@ describe('router', () => {
     expect(resolve('/u/12.abc%2Bdef')?.params).toEqual({ token: '12.abc+def' });
     expect(resolve('/campaigns/42/edit/extra')).toBeNull();
     expect(resolve('/nope')).toBeNull();
+  });
+});
+
+describe('consentChange', () => {
+  const original = '2026-11-16T06:40:00.000Z';
+
+  it('sends nothing when the date was not touched, so unrelated edits cannot fail', () => {
+    expect(consentChange(original, '2026-11-16', new Date('2026-11-16T06:45:00Z'))).toBeUndefined();
+    expect(consentChange(original, '', new Date())).toBeUndefined();
+  });
+
+  it('never sends a time in the future, even for today before noon UTC', () => {
+    const now = new Date('2026-11-16T06:45:00Z');
+    const sent = consentChange('2026-11-10T09:00:00.000Z', '2026-11-16', now);
+    expect(new Date(sent!).getTime()).toBeLessThanOrEqual(now.getTime());
+  });
+
+  it('uses noon UTC for an earlier day', () => {
+    expect(consentChange(original, '2026-11-01', new Date('2026-11-16T06:45:00Z'))).toBe(
+      '2026-11-01T12:00:00.000Z',
+    );
+  });
+});
+
+describe('latestOnly', () => {
+  it('lets only the newest request apply its result', () => {
+    const begin = latestOnly();
+    const first = begin();
+    expect(first()).toBe(true);
+    const second = begin();
+    expect(first()).toBe(false);
+    expect(second()).toBe(true);
   });
 });

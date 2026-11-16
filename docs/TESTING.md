@@ -87,6 +87,8 @@ Found in the final review pass:
 - **A redelivered webhook event was discarded as a duplicate even if its first delivery had not been applied** (a crash between storing and applying). Now reprocessed.
 - **`TRUST_PROXY=true` trusted a client-supplied `X-Forwarded-For`**, letting a client choose its own rate-limit bucket. It is now a hop count.
 - **Resend quota and idempotency-conflict errors were handled like any transient failure**, failing messages after five attempts for reasons unrelated to them, or retrying a conflict that can never succeed.
+- **Editing a contact failed before 12:00 UTC if its consent date was today** ("Consent cannot be dated in the future"). The edit form re-sent the consent date as noon UTC even when untouched. It surfaced when CI happened to run at 06:43 UTC, after passing on every earlier run (all of which ran in the afternoon or evening UTC). Reproduced locally at 06:46 UTC, fixed by sending the date only when it was changed and never later than now (`consentChange`, with unit tests). A reminder that time-of-day matters as much as time zones.
+- **List pages could show stale results**: a slow response for an older search term could arrive after a newer one and overwrite it. Contacts, suppressions, campaigns, list detail and analytics now apply only the newest request (`latestOnly`).
 - Test-data collisions when end-to-end tests ran in parallel (duplicate generated emails) were removed.
 
 ## Running the tests

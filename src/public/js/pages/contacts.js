@@ -1,8 +1,9 @@
 import { api } from '../api.js';
-import { debounce, h, mount } from '../dom.js';
+import { debounce, h, latestOnly, mount } from '../dom.js';
 import { icon } from '../icons.js';
 import {
   CONSENT_LABELS,
+  consentChange,
   csvCell,
   downloadText,
   formatDate,
@@ -93,7 +94,9 @@ export async function contactsPage({ container, query, isCurrent }) {
     );
   };
 
+  const begin = latestOnly();
   async function load() {
+    const isLatest = begin();
     tableCard.setAttribute('aria-busy', 'true');
     try {
       const { data, meta } = await api.get('/contacts', {
@@ -103,17 +106,17 @@ export async function contactsPage({ container, query, isCurrent }) {
         cursor: view.cursors[view.index],
         limit: 25,
       });
-      if (!isCurrent()) return;
+      if (!isCurrent() || !isLatest()) return;
       view.nextCursor = meta.nextCursor;
       drawTable(data);
     } catch (error) {
-      if (isCurrent())
+      if (isCurrent() && isLatest())
         mount(
           tableCard,
           errorState(error, () => void load()),
         );
     } finally {
-      tableCard.removeAttribute('aria-busy');
+      if (isLatest()) tableCard.removeAttribute('aria-busy');
     }
   }
 
@@ -549,8 +552,10 @@ export function contactModal({ contact, lists, onSaved }) {
           consentBasis: basis.input.value,
           consentSource: source.input.value,
         };
-        if (editing) body.consentedAt = new Date(`${date.input.value}T12:00:00Z`).toISOString();
-        else if (chosen.size) body.listIds = [...chosen];
+        if (editing) {
+          const changed = consentChange(contact.consentedAt, date.input.value);
+          if (changed) body.consentedAt = changed;
+        } else if (chosen.size) body.listIds = [...chosen];
         try {
           await withBusy(submit, () =>
             editing ? api.patch(`/contacts/${contact.id}`, body) : api.post('/contacts', body),

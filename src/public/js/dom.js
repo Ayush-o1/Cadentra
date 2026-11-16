@@ -65,5 +65,18 @@ export function debounce(fn, delay = 250) {
   };
 }
 
+/**
+ * Latest-wins guard for overlapping requests. Call `begin()` before a request and keep the result;
+ * it returns true only while no newer `begin()` has happened. Without it, a slow earlier response
+ * (an older search term) can arrive after a newer one and overwrite it with stale data.
+ */
+export function latestOnly() {
+  let latest = 0;
+  return () => {
+    const mine = ++latest;
+    return () => mine === latest;
+  };
+}
+
 let idCounter = 0;
 export const uid = (prefix = 'id') => `${prefix}-${++idCounter}`;

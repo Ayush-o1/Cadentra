@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { debounce, h, mount } from '../dom.js';
+import { debounce, h, mount, latestOnly } from '../dom.js';
 import { icon } from '../icons.js';
 import { summarize } from '../campaign-utils.js';
 import { formatDate, formatNumber, formatPercent } from '../format.js';
@@ -89,7 +89,9 @@ export async function campaignsPage({ container, query, isCurrent }) {
     void load();
   };
 
+  const begin = latestOnly();
   async function load() {
+    const isLatest = begin();
     try {
       const { data, meta } = await api.get('/campaigns', {
         status: view.status,
@@ -97,11 +99,11 @@ export async function campaignsPage({ container, query, isCurrent }) {
         cursor: view.cursors[view.index],
         limit: 20,
       });
-      if (!isCurrent()) return;
+      if (!isCurrent() || !isLatest()) return;
       view.next = meta.nextCursor;
       draw(data);
     } catch (error) {
-      if (isCurrent())
+      if (isCurrent() && isLatest())
         mount(
           card,
           errorState(error, () => void load()),
