@@ -10,8 +10,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Three proxies sit in front of the app on Render (measured live: with 1 the app saw an internal
+      # 10.x address, with 2 a Cloudflare address; with 3 it sees the client and ignores a forged
+      # X-Forwarded-For).
       - key: TRUST_PROXY
-        value: '1'
+        value: '3'
       - key: EMAIL_PROVIDER
         value: resend
       - key: RUN_WORKER

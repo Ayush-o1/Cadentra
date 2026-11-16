@@ -4,7 +4,7 @@ A permission-based outbound email platform for small teams. Import contacts who 
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-**Status:** feature-complete MVP, tested locally and in CI. **Not deployed.** The deployment configuration is written, the Docker image and the production Compose stack have been run and smoke-tested, and nothing is hosted yet. [docs/FINAL_MANUAL_SETUP.md](docs/FINAL_MANUAL_SETUP.md) lists the few account-dependent steps left; [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) records what is verified and what is not.
+**Status:** feature-complete MVP, tested locally and in CI, and **deployed and verified live** on free tiers (Render, TiDB Cloud, Resend) at https://cadentra-3be838.onrender.com. The first visit after idle takes about a minute to wake. What was verified live, and what was not, is in [docs/DEPLOYMENT_AUTOMATION_AUDIT.md](docs/DEPLOYMENT_AUTOMATION_AUDIT.md); [docs/FINAL_MANUAL_SETUP.md](docs/FINAL_MANUAL_SETUP.md) lists the few steps left for the owner.
 
 ## What it does
 

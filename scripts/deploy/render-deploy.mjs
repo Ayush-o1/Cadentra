@@ -91,7 +91,7 @@ const systemFrom = full.SYSTEM_EMAIL_FROM ?? 'Cadentra <onboarding@resend.dev>';
 
 const env = {
   NODE_ENV: 'production',
-  TRUST_PROXY: '1',
+  TRUST_PROXY: '3', // measured live on Render: 1 and 2 leave the app seeing a proxy address
   EMAIL_PROVIDER: 'resend',
   RUN_WORKER: 'true',
   QUEUE_CLAIM_MODE: 'conditional-update',
