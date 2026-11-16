@@ -16,7 +16,7 @@ The email provider in automated tests is always the explicit `FakeProvider`. No 
 
 | Check                                                                     | Result                                      |
 | ------------------------------------------------------------------------- | ------------------------------------------- |
-| Unit tests                                                                | 110 passed                                  |
+| Unit tests                                                                | 115 passed                                  |
 | Integration tests (real MySQL)                                            | 178 passed                                  |
 | Integration tests, `conditional-update` claim mode                        | 178 passed (5 full runs, no failure)        |
 | End-to-end tests (Playwright)                                             | 20 passed (full suite run 4 times in a row) |
