@@ -1,146 +1,100 @@
 # Final manual setup
 
-Everything that can be done without your accounts is already done and pushed to a branch. This list is **only** what needs you: creating accounts, copying secrets, clicking through three dashboards, and watching the real thing work. About 60 to 90 minutes.
+Hosting costs **₹0**: Render free web service, TiDB free database, Resend free plan, GitHub Actions (free for a public repository). Nothing here asks for a card. If any page asks for one, stop: that is a paid step you did not agree to.
 
-**Rules for secrets.** Never paste an API key, password, database URL or token into a chat, an issue, a commit or a file in this repository. Put them only into the hosting dashboards and your own shell. If a step says "set in your shell", use a leading space before the command so most shells keep it out of history.
+Almost everything is already scripted (see [DEPLOYMENT_AUTOMATION_AUDIT.md](DEPLOYMENT_AUTOMATION_AUDIT.md) for what is verified and what is not). **Only three things need you.** About 15 minutes of your time, plus waiting for a build.
 
-**Nothing here costs money.** If any site asks for a credit card or offers an "upgrade", stop: that is a paid commitment and was not part of the plan.
-
-Order matters, because later steps need values from earlier ones.
+Secrets rule: never paste a key into chat, a commit or a file in this repository. The only place you type a secret is the hidden prompt in step 2, which writes it to `~/.cadentra/secrets.env` (readable only by you, outside the repository).
 
 ---
 
-## 0. Merge the pull request
+## 0. Do first (2 minutes): rotate the Render CLI key
 
-All the work after your last push (account recovery, the TiDB-safe queue claim, the Docker shutdown fix, the new docs) is on the branch `chore/final-hardening`, in **pull request #1**: <https://github.com/Ayush-o1/Cadentra/pull/1>. GitHub Actions already ran on it and passed (verify and image jobs). `main` was deliberately not changed without your say-so.
+An earlier command of mine accidentally printed your Render CLI's stored API key into the chat session. Treat it as exposed.
 
-1. Open the pull request, check **Checks** is green, and press **Merge pull request** (a regular merge or rebase is fine; any option keeps history).
-2. Then, in your terminal: `git checkout main && git pull`.
+1. Open <https://dashboard.render.com/u/settings> and find **API Keys**.
+2. Revoke every key you do not recognise (the CLI's key is named like a CLI login).
+3. In your terminal run `render login`, press Enter, and approve the browser prompt.
 
-Render deploys from `main`, so do this before step 3. Everything below assumes `main` contains these changes.
+Success: `render whoami` prints your email.
 
----
+## 1. Decision: approve the TiDB database (30 seconds)
 
-## 1. TiDB Cloud: the free MySQL-compatible database
+A free TiDB database already exists. It was created with TiDB Cloud's account-free "Zero" API (no sign-up, no card) and expires on **2026-12-16** unless you claim it in step 4. I connected to it once and found a real bug (the connect timeout), but I was blocked from running the compatibility suite on it because you had not approved that service by name.
 
-1. Sign up at <https://tidbcloud.com> and create a **Starter** cluster (AWS region near you). Leave the **monthly spending limit at 0**.
-2. Open the cluster, choose **Connect**, **Public endpoint**, and generate a password. Keep the page open. You need: host, port (4000), user (it looks like `abc123.root`), password.
-3. Open the **SQL Editor** and run:
+**Reply to me in the chat with: `Approved: use the TiDB Zero database.`** I will then run, with no further action from you:
 
-   ```sql
-   CREATE DATABASE cadentra_verify;
-   CREATE DATABASE cadentra;
-   ```
+1. the compatibility check and the integration suite against it,
+2. the migrations on a fresh database for the live app.
 
-4. Run the compatibility verification from your computer. Full explanation and the expected result of each command are in [TIDB_COMPATIBILITY.md](TIDB_COMPATIBILITY.md); the short version, using a **dedicated** database because the test suite wipes it:
+_If you prefer your own TiDB account instead of Zero:_ sign up at <https://tidbcloud.com> (free, leave **Spending limit = 0**), create a **Starter** cluster, create a database named `cadentra` in **SQL Editor**, copy the connection details from **Connect → Public endpoint**, and enter the resulting URL (`mysql://USER:PASSWORD@HOST:4000/cadentra?ssl=true`) at the prompt in step 2. Then tell me and I continue.
 
-   ```bash
-    export VERIFY_URL='mysql://USER:PASSWORD@HOST:4000/cadentra_verify?ssl=true'   # URL-encode @ in the password as %40
-   DATABASE_URL="$VERIFY_URL" npm run db:compat
-   DATABASE_URL="$VERIFY_URL" npx prisma migrate deploy
-   TEST_DATABASE_URL="$VERIFY_URL" TEST_CLAIM_MODE=conditional-update npm run test:integration
-   ```
+## 2. Create your Resend account and one key (5 minutes)
 
-5. **Decision.** If the first command shows a `FAIL`, or migrations fail, or tests fail beyond the documented expected ones, **stop and tell me the output** (not the URL). The fallback is a real MySQL. If it is as expected, continue.
-
-Your live database URL for step 4 below is the same URL with `/cadentra` instead of `/cadentra_verify`.
-
-## 2. Resend: email provider
-
-1. Sign up at <https://resend.com>.
-2. **API Keys** (<https://resend.com/api-keys>): create a key with **Sending access**. Copy it once; you cannot see it again.
-3. You do **not** need a domain to finish the project (a domain costs money). Without one:
-   - the sender must be `onboarding@resend.dev`,
-   - mail can go to **your own Resend account email** and to Resend's test addresses (`delivered@resend.dev`, `bounced@resend.dev`, `complained@resend.dev`). Resend's documentation says other recipients need a verified domain; this was not tested.
-4. Run the guarded live check. It sends **3 emails to Resend's test addresses only** (never to a real person), repeats one with the same idempotency key to prove no duplicate is sent, and probes the conflict error:
+1. Sign up at <https://resend.com/signup> (free). Confirm your email.
+2. Open <https://resend.com/api-keys> → **Create API Key**.
+   - **Name:** `cadentra-setup`
+   - **Permission:** **Full access** (the setup script needs it to create the webhook and a sending-only key for the app)
+   - **Domain:** leave as is. Click **Add**.
+3. **Copy the key now** (it starts with `re_`; it is shown once). Secret: yes.
+4. In VS Code's terminal, in the repository folder, run:
 
    ```bash
-    export RESEND_API_KEY='re_...'
-   RESEND_LIVE_TEST_CONFIRM=send-test-emails npm run resend:live
+   bash scripts/deploy/store-secrets.sh
    ```
 
-   Expect `ok` on every line and `All checks passed.` A `FAIL` on the first send with a permanent error means the key or sender is wrong; copy the printed message (it never includes the key).
+   - First prompt (**DATABASE_URL**): just press **Enter** (I fill this in after step 1).
+   - Second prompt (**Resend FULL-ACCESS API key**): paste the `re_...` key and press Enter. Nothing is shown while you type; that is normal.
 
-## 3. Render: hosting (free web service)
+   Success: the script prints `saved RESEND_ADMIN_KEY` and `Nothing was printed or transmitted.`
 
-1. Sign up at <https://render.com> with your GitHub account and allow access to `Ayush-o1/Cadentra`.
-2. **New + → Blueprint**, pick the repository and the `main` branch. Render reads [render.yaml](../render.yaml): a Docker web service on the free plan.
-3. Render will ask for the variables marked "sync: false". Enter:
+5. Tell me in the chat: **`Secrets stored. Continue.`**
 
-   | Variable                | Value                                                                                                          |
-   | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-   | `DATABASE_URL`          | `mysql://USER:PASSWORD@HOST:4000/cadentra?ssl=true` (the **live** database, not `cadentra_verify`)             |
-   | `APP_URL`               | `https://cadentra.onrender.com` for now. The real address is shown after creation; you fix it in the next step |
-   | `SYSTEM_EMAIL_FROM`     | `Cadentra <onboarding@resend.dev>`                                                                             |
-   | `RESEND_API_KEY`        | the key from step 2                                                                                            |
-   | `RESEND_WEBHOOK_SECRET` | `whsec_pending` for now (the real secret is created in step 5; the app needs some value to start)              |
+If it fails: re-run the command; it only changes what you type.
 
-   `APP_SECRET` and `TICK_TOKEN` are generated by Render. `QUEUE_CLAIM_MODE=conditional-update` and the proxy setting are already in the blueprint.
+## What I do after steps 1 to 2 (nothing for you to click)
 
-4. Create the service and wait for the first deploy to go green. The first start applies the database migrations. If the deploy fails, open **Logs**: a failed migration prints the exact statement. Report that text.
-5. Copy the service's real address (`https://<name>.onrender.com`). If it differs from what you typed, set `APP_URL` to it under **Environment**, then **Manual Deploy → Deploy latest commit**. `APP_URL` is used in unsubscribe links and in password-reset links, and decides cookie security, so it must be exactly the public https address.
+In this order, stopping and telling you if anything fails:
 
-## 4. Resend webhook
+1. `node scripts/deploy/resend-setup.mjs`: creates a **sending-only** Resend key and the Resend webhook for the future Render address, and stores both secrets.
+2. `node scripts/deploy/render-deploy.mjs create`: creates the free Render web service from the branch `chore/final-hardening` (**no merge to `main` needed**), waits for `/readyz`.
+3. `node scripts/deploy/github-secrets.mjs`: sets `APP_URL` and `TICK_TOKEN` for the hourly wake workflow.
+4. `node scripts/deploy/verify-live.mjs <the live URL>`: registers a throwaway account, sets the sender, imports three Resend **test** addresses, launches, and waits for delivered, bounced and spam-report events to arrive through the webhook, then checks automatic suppression and that the app sees your real IP.
+5. Triggers the "Wake and tick" workflow once and reads its result.
+6. Updates the README and deployment docs with what actually passed, and reports the live URL.
 
-1. <https://resend.com/webhooks> → **Add Webhook**. Endpoint: `https://<your-render-address>/webhooks/resend`. Select all **email** events.
-2. Copy the **signing secret** (`whsec_...`).
-3. In Render → **Environment**, replace `RESEND_WEBHOOK_SECRET` with it and redeploy.
+Only test addresses (`@resend.dev`) are ever emailed. The live check will not run otherwise.
 
-## 5. GitHub: keep the free service awake and the queue moving
+## 3. After it works (5 minutes, within 30 days)
 
-Render's free service sleeps after about 15 minutes without traffic, and scheduled email only goes out while it is awake. [.github/workflows/tick.yml](../.github/workflows/tick.yml) wakes it every 5 minutes. From the repository folder (needs `gh auth login` once, which is already done on this machine):
-
-```bash
-gh secret set APP_URL --body 'https://<your-render-address>'
-gh secret set TICK_TOKEN        # paste the TICK_TOKEN value from Render → Environment when prompted
-gh workflow run "Wake and tick"
-```
-
-Check **Actions → Wake and tick** shows a green run. Notes: GitHub may start scheduled runs several minutes late, and disables scheduled workflows in a repository with no activity for 60 days (re-enable them from the Actions tab). Keeping the service awake all month uses most of Render's free instance hours; that is fine for one service.
-
-## 6. Verify the live application
-
-1. Smoke test (creates no data):
+1. **Claim the TiDB database** so it does not expire. Get the claim link with:
 
    ```bash
-   npm run smoke -- https://<your-render-address>
+   jq -r .instance.claimInfo.claimUrl ~/.cadentra/tidb-zero.json
    ```
 
-   Expect `All checks passed.`
+   Open it, sign in or sign up at TiDB Cloud (free), accept the claim. Then open the cluster's **Settings** and check **Spending limit** is **0** (it must stay 0 so it cannot charge you). Success: the cluster appears in your TiDB Cloud dashboard as a **Starter** cluster.
+   _If you skip this, the database is deleted on 2026-12-16 and the app stops working._
 
-2. **Client IP check.** Sign in on the live site (step 3 below), open **Settings → Security → Sessions**. The address shown for your session must be **your** public IP (`curl ifconfig.me`). If it shows a private address (for example `10.x`), the proxy count is wrong: set `TRUST_PROXY` to `2` in Render and redeploy, because otherwise every visitor would share one rate-limit bucket.
+2. **Delete the Resend setup key.** <https://resend.com/api-keys> → the row `cadentra-setup` → **Delete**. The app only uses the sending-only key `cadentra-runtime`.
 
-3. **Walk through the product.** Use your **own Resend account email** to register, because without a verified domain that is the only real inbox the app can reach:
-   1. Register at the live address. The confirmation email arrives; click it (it opens `/verify-email`). In Settings the "not confirmed" notice disappears.
-   2. Sign out, choose **Forgot your password?**, request a reset, and use the emailed link. You should be asked for a new password and then signed in with it.
-   3. Settings → Sender identity: name, `onboarding@resend.dev`, a postal address, window 00:00 to 24:00, weekdays off.
-   4. Import a CSV with four contacts: `delivered+1@resend.dev`, `bounced+1@resend.dev`, `complained+1@resend.dev` and **your own Resend account email**, with a consent basis. Add them to a list.
-   5. Create a campaign to that list with two steps, delay `0` and `1` day, and launch it.
-   6. Within a few minutes the campaign page should show **Delivered**, **Bounced** and **Spam report**. If everything stays at **Accepted**, the webhook is not arriving: check Resend → Webhooks → the endpoint's recent deliveries, and that `RESEND_WEBHOOK_SECRET` matches.
-   7. The bounced and complained addresses must appear on the **Suppression list**, and Analytics must count them.
-   8. In your own inbox, open the campaign email. It must carry the sender name, the postal address, the reason you are receiving it and an **Unsubscribe** link. Click the link, confirm the page, and check that your address is now on the **Suppression list** and that the step-two email to you is cancelled. Your own address is the only real person this guide contacts.
+3. **Check Render's shared free hours after a week:** <https://dashboard.render.com/billing#included-usage>. All your free Render services share 750 hours a month. If the total is close to 750, disable the workflow: <https://github.com/Ayush-o1/Cadentra/actions/workflows/tick.yml> → **⋯ → Disable workflow**.
 
-## 7. Clean up and finish
+4. **Optional, when you want it:** merge pull request #1 (<https://github.com/Ayush-o1/Cadentra/pull/1>) with **Merge pull request**. Render is deployed from the branch, so this changes nothing about the running app; after merging, point the service at `main` in Render → the service → **Settings → Build & Deploy → Branch**.
 
-1. In TiDB, drop the verification database: `DROP DATABASE cadentra_verify;`
-2. Tell me, in chat: the live **URL** (not any keys), and which steps passed or failed with the output of any failure. I will then update the README status, [DEPLOYMENT.md](DEPLOYMENT.md) and the resume-ready description with what was actually verified. Until you confirm it passes, the repository will keep saying _not deployed_, on purpose.
+## If something fails
 
----
+| Symptom                                              | What to do                                                                                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `store-secrets.sh` says command not found            | Run it from the repository folder: `cd ~/Desktop/Cadentra`                                                                              |
+| `resend-setup` says Resend refused the key (401/403) | The key was not **Full access**. Create a new one at <https://resend.com/api-keys> and run `bash scripts/deploy/store-secrets.sh` again |
+| `resend-setup` cannot create the webhook             | The free plan allows **one** webhook. Delete any other endpoint at <https://resend.com/webhooks>, then ask me to re-run it              |
+| `render-deploy create` times out                     | Free instances build slowly. Ask me to run `node scripts/deploy/render-deploy.mjs logs`; I will read the error                          |
+| Live check says events stay `accepted`               | The webhook is not reaching the app or the signing secret is wrong. Ask me to run `resend-setup.mjs --rotate`                           |
+| App sleeps and the first page load is slow           | Normal on the free plan: about a minute to wake. The hourly workflow wakes it                                                           |
+| TiDB connections are refused late in a month         | The free request-unit allowance is used up. See usage in TiDB Cloud; ask me to raise `WORKER_POLL_MS`                                   |
 
-## Optional, not required
+## What is not included, on purpose
 
-- **A custom domain and verified sending domain** cost money (a domain is roughly a yearly fee). With one, set `SYSTEM_EMAIL_FROM` and the Settings sender to an address on it, verify it in Resend (SPF and DKIM records), and you can email people other than yourself. Do not do this unless you decide to.
-- **`REQUIRE_VERIFIED_EMAIL=true`** makes a confirmed address mandatory before a campaign can launch. Turn it on only once a verified domain lets the confirmation email reach arbitrary users; otherwise new sign-ups could never launch.
-- **Real MySQL instead of TiDB** (if step 1 fails): any managed MySQL 8 database. Use its URL, set `QUEUE_CLAIM_MODE=skip-locked`, and skip step 1's tests.
-
-## If something goes wrong
-
-| Symptom                                    | Likely cause and fix                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Render deploy fails right away             | Logs show a config message listing every missing variable. Fill them in                                           |
-| Deploy fails on a migration                | Report the statement text. Database may be half-migrated: drop and recreate `cadentra` (it is empty) and redeploy |
-| Site loads but sign-in loops               | `APP_URL` is not exactly the https address, so the secure cookie is rejected                                      |
-| 403 from Resend on the first send          | Sender is not `onboarding@resend.dev`, or the recipient is not your account email or a test address               |
-| Campaign never starts, nothing in Logs     | Service was asleep. Check the **Wake and tick** workflow and the two secrets                                      |
-| Everything stays **Accepted**              | Webhook not reaching the app or wrong signing secret (step 4)                                                     |
-| TiDB connections refused late in the month | Free request-unit allowance used up. Check usage in the TiDB console; raise `WORKER_POLL_MS`                      |
+- A custom domain or a verified sending domain (they cost money). Without one, Resend can only email your own address and its test addresses, which is all this setup needs.
+- Merging to `main`: only with your say-so.

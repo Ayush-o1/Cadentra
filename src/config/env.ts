@@ -121,7 +121,14 @@ export class ConfigError extends Error {
 
 export function loadConfig(raw: NodeJS.ProcessEnv = process.env): Config {
   // `KEY=` in a .env file or a blank field in a hosting dashboard means "not set", not "empty".
-  const source = Object.fromEntries(Object.entries(raw).filter(([, value]) => value !== ''));
+  const source: Record<string, string | undefined> = Object.fromEntries(
+    Object.entries(raw).filter(([, value]) => value !== ''),
+  );
+  // Render tells every web service its own public address. Using it when APP_URL is not set means
+  // the address cannot be misconfigured, and it is not needed before the service exists.
+  if (source['APP_URL'] === undefined && source['RENDER_EXTERNAL_URL'] !== undefined) {
+    source['APP_URL'] = source['RENDER_EXTERNAL_URL'];
+  }
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new ConfigError(

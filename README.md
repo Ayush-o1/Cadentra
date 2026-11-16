@@ -82,20 +82,21 @@ All settings are environment variables, validated at startup. See [.env.example]
 
 ## Documentation
 
-| Document                                             | Contents                                                         |
-| ---------------------------------------------------- | ---------------------------------------------------------------- |
-| [Architecture](docs/ARCHITECTURE.md)                 | How the system fits together, the send pipeline, diagrams        |
-| [Database design](docs/DATABASE_DESIGN.md)           | Schema, constraints, indexes, transactions, concurrency findings |
-| [API reference](docs/API_REFERENCE.md)               | Every endpoint, with conventions and error codes                 |
-| [Security](docs/SECURITY.md)                         | Threats considered, controls, and known gaps                     |
-| [Testing](docs/TESTING.md)                           | Strategy, what is covered, results                               |
-| [Deployment](docs/DEPLOYMENT.md)                     | Hosting options, configuration, verification, what is untested   |
-| [TiDB compatibility](docs/TIDB_COMPATIBILITY.md)     | Audit of the free MySQL-compatible database and how to verify it |
-| [Final manual setup](docs/FINAL_MANUAL_SETUP.md)     | The account-dependent steps that remain, in order                |
-| [Decisions](docs/DECISIONS.md)                       | Decision log with alternatives and trade-offs                    |
-| [Product requirements](docs/PRODUCT_REQUIREMENTS.md) | Scope, message and campaign lifecycles, design system            |
-| [Research](docs/RESEARCH.md)                         | Phase 0 findings, with verified facts separated from judgement   |
-| [Roadmap](docs/ROADMAP.md)                           | The ten phases as planned, and where they ended up               |
+| Document                                                           | Contents                                                         |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)                               | How the system fits together, the send pipeline, diagrams        |
+| [Database design](docs/DATABASE_DESIGN.md)                         | Schema, constraints, indexes, transactions, concurrency findings |
+| [API reference](docs/API_REFERENCE.md)                             | Every endpoint, with conventions and error codes                 |
+| [Security](docs/SECURITY.md)                                       | Threats considered, controls, and known gaps                     |
+| [Testing](docs/TESTING.md)                                         | Strategy, what is covered, results                               |
+| [Deployment](docs/DEPLOYMENT.md)                                   | Hosting options, configuration, verification, what is untested   |
+| [TiDB compatibility](docs/TIDB_COMPATIBILITY.md)                   | Audit of the free MySQL-compatible database and how to verify it |
+| [Deployment automation audit](docs/DEPLOYMENT_AUTOMATION_AUDIT.md) | What was automated, what is verified, free-tier facts, risks     |
+| [Final manual setup](docs/FINAL_MANUAL_SETUP.md)                   | The account-dependent steps that remain, in order                |
+| [Decisions](docs/DECISIONS.md)                                     | Decision log with alternatives and trade-offs                    |
+| [Product requirements](docs/PRODUCT_REQUIREMENTS.md)               | Scope, message and campaign lifecycles, design system            |
+| [Research](docs/RESEARCH.md)                                       | Phase 0 findings, with verified facts separated from judgement   |
+| [Roadmap](docs/ROADMAP.md)                                         | The ten phases as planned, and where they ended up               |
 
 ## Known limitations
 

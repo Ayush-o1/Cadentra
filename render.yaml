@@ -24,8 +24,7 @@ services:
         value: '10000'
       - key: REQUIRE_VERIFIED_EMAIL
         value: 'false'
-      - key: APP_URL
-        sync: false
+      # APP_URL is not set: the app uses RENDER_EXTERNAL_URL, which Render provides.
       - key: DATABASE_URL
         sync: false
       - key: APP_SECRET

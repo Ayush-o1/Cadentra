@@ -64,10 +64,10 @@ Never send test campaigns to real addresses you do not have consent to email.
 | ------------ | -------------------------------- | -------------------------------------------------------------------------------------------------- |
 | Web + worker | Render free web service (Docker) | Spins down after about 15 minutes idle and takes about a minute to wake. No free background worker |
 | MySQL        | TiDB Cloud Starter               | MySQL-compatible, not MySQL; see the spike below. Free tier terms change                           |
-| Scheduling   | `.github/workflows/tick.yml`     | Wakes the sleeping service every 5 minutes and asks it to send what is due                         |
+| Scheduling   | `.github/workflows/tick.yml`     | Wakes the sleeping service once an hour and asks it to send what is due                            |
 | Email        | Resend free plan                 | 100 emails per day, 3,000 per month                                                                |
 
-Because the queue lives in the database and the tick endpoint drives the worker on demand, a sleeping service does not lose scheduled email; it sends the next time it is woken (at most about five minutes late). The tick workflow also keeps the service awake, which uses most of the month's free instance hours. Resend's retry behaviour for webhooks delivered to a sleeping service was not verified; the reconciliation logic handles late events, but an event that Resend gives up on would be lost.
+Because the queue lives in the database and the tick endpoint drives the worker on demand, a sleeping service does not lose scheduled email; it sends the next time it is woken (at most about an hour late while nobody is using the app; within seconds while someone is). The tick is hourly, not more often, because Render's 750 free instance hours a month are shared by every free service in the workspace, and a service pinged every few minutes never sleeps (about 744 hours), which would get all of them suspended. Resend's retry behaviour for webhooks delivered to a sleeping service was not verified; the reconciliation logic handles late events, but an event that Resend gives up on would be lost.
 
 Steps:
 

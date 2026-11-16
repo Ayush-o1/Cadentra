@@ -90,6 +90,18 @@ describe('loadConfig', () => {
     );
   });
 
+  it("uses Render's own address when APP_URL is not set, and prefers an explicit APP_URL", () => {
+    const render = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      RENDER_EXTERNAL_URL: 'https://x.onrender.com',
+    };
+    expect(loadConfig(render).appUrl).toBe('https://x.onrender.com');
+    expect(loadConfig({ ...render, APP_URL: 'https://app.example.org' }).appUrl).toBe(
+      'https://app.example.org',
+    );
+  });
+
   it('treats blank values as unset', () => {
     const config = loadConfig({ ...validEnv, TICK_TOKEN: '', RESEND_API_KEY: '', LOG_LEVEL: '' });
     expect(config.worker.tickToken).toBeUndefined();

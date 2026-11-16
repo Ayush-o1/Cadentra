@@ -19,6 +19,9 @@ export function createDb(databaseUrl: string): Db {
     password: decodeURIComponent(url.password),
     database: url.pathname.slice(1),
     connectionLimit: 10,
+    // The driver's default is 1 second, too short for a TLS handshake to a hosted database in another
+    // region (a real TiDB Cloud connection failed with it).
+    connectTimeout: 10_000,
     // Hosted MySQL-compatible services close idle connections after a few minutes (TiDB Cloud
     // Starter: 340 s on public endpoints). Recycling idle ones sooner avoids handing out a dead one.
     idleTimeout: 240,
