@@ -17,6 +17,7 @@ MySQL 8.4, InnoDB, `utf8mb4`. The schema is defined in [`prisma/schema.prisma`](
 | ---------------------- | ------------------------------------------------------------------------------ |
 | `users`                | Login identity. Email unique and stored lower-cased                            |
 | `sessions`             | Server-side sessions. Only the SHA-256 hash of the token is stored             |
+| `auth_tokens`          | Single-use password-reset and email-confirmation tokens (hash only, expiry)    |
 | `workspaces`           | The tenant: sender identity, time zone, default sending window, daily limit    |
 | `workspace_members`    | Membership and role (`owner`, `member`). Primary key `(workspace_id, user_id)` |
 | `contacts`             | A person, with consent basis, source and time                                  |
@@ -35,6 +36,7 @@ Not modelled on purpose: a reusable sequence entity (steps belong to a campaign)
 ```mermaid
 erDiagram
   users ||--o{ sessions : has
+  users ||--o{ auth_tokens : receives
   users ||--o{ workspace_members : joins
   workspaces ||--o{ workspace_members : has
   workspaces ||--o{ contacts : owns
@@ -123,16 +125,17 @@ Each index exists for a named query. Plans were checked with `EXPLAIN` on a synt
 
 ## Transactions
 
-| Operation         | Atomic unit                                                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| Register          | user, workspace, owner membership, activity entry                                           |
-| Launch campaign   | status change (with version check), recipient snapshot excluding suppressed, first messages |
-| Claim messages    | `SELECT … FOR UPDATE SKIP LOCKED` and the update to `sending`                               |
-| Record a send     | message to `accepted`, create the next step's message (or complete the recipient)           |
-| Process a webhook | message status change, suppression insert, stop the recipient's remaining steps             |
-| Unsubscribe       | suppression insert, skip pending messages, stop the recipient, activity entry               |
-| CSV import        | per batch of 500: contact inserts and list memberships                                      |
-| Cancel campaign   | status change, cancel pending messages, stop recipients                                     |
+| Operation         | Atomic unit                                                                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register          | user, workspace, owner membership, activity entry                                                                                                                                      |
+| Launch campaign   | status change (with version check), recipient snapshot excluding suppressed, first messages                                                                                            |
+| Claim messages    | `SELECT … FOR UPDATE SKIP LOCKED` and the update to `sending` (or, in `conditional-update` mode, no transaction: one conditional `UPDATE` per message, the affected-row count decides) |
+| Reset password    | spend the token, set the password hash, confirm the address, delete the user's sessions                                                                                                |
+| Record a send     | message to `accepted`, create the next step's message (or complete the recipient)                                                                                                      |
+| Process a webhook | message status change, suppression insert, stop the recipient's remaining steps                                                                                                        |
+| Unsubscribe       | suppression insert, skip pending messages, stop the recipient, activity entry                                                                                                          |
+| CSV import        | per batch of 500: contact inserts and list memberships                                                                                                                                 |
+| Cancel campaign   | status change, cancel pending messages, stop recipients                                                                                                                                |
 
 The call to the email provider is never inside a transaction.
 

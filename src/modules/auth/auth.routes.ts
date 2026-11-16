@@ -4,11 +4,15 @@ import type { Db } from '../../lib/db.js';
 import { noContent, parseId, readCookie } from '../../lib/http.js';
 import { createAuthResolver, createRequireAuth, getAuth } from '../../middleware/auth.js';
 import { createRateLimiter, emailKey } from '../../middleware/rate-limit.js';
+import type { SystemMailer } from '../../email/system-mail.js';
 import {
   changePasswordSchema,
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
   updateProfileSchema,
+  verifyEmailSchema,
 } from './auth.schemas.js';
 import { createAuthService, type ClientInfo } from './auth.service.js';
 
@@ -16,9 +20,9 @@ function clientInfo(req: Request): ClientInfo {
   return { userAgent: req.get('user-agent'), ip: req.ip };
 }
 
-export function createAuthRouter(config: Config, db: Db): Router {
+export function createAuthRouter(config: Config, db: Db, mailer: SystemMailer): Router {
   const router = Router();
-  const service = createAuthService(db, config);
+  const service = createAuthService(db, config, mailer);
   const requireAuth = createRequireAuth(config, db);
   const resolveAuth = createAuthResolver(config, db);
 
@@ -54,6 +58,48 @@ export function createAuthRouter(config: Config, db: Db): Router {
       const { token, identity } = await service.login(loginSchema.parse(req.body), clientInfo(req));
       startSession(res, token);
       res.json({ data: identity });
+    },
+  );
+
+  // Same answer whether or not the address has an account.
+  router.post(
+    '/auth/forgot-password',
+    createRateLimiter(config.rateLimits.passwordResetPerIp),
+    createRateLimiter(config.rateLimits.passwordResetPerAccount, { key: emailKey }),
+    async (req, res) => {
+      await service.requestPasswordReset(forgotPasswordSchema.parse(req.body).email);
+      res.status(202).json({ data: { accepted: true } });
+    },
+  );
+
+  router.post(
+    '/auth/reset-password',
+    createRateLimiter(config.rateLimits.passwordResetPerIp),
+    async (req, res) => {
+      const { token, newPassword } = resetPasswordSchema.parse(req.body);
+      await service.resetPassword(token, newPassword);
+      noContent(res);
+    },
+  );
+
+  router.post(
+    '/auth/verify-email',
+    createRateLimiter(config.rateLimits.passwordResetPerIp),
+    async (req, res) => {
+      await service.verifyEmail(verifyEmailSchema.parse(req.body).token);
+      noContent(res);
+    },
+  );
+
+  router.post(
+    '/account/verification-email',
+    requireAuth,
+    createRateLimiter(config.rateLimits.verificationResend, {
+      key: (req) => `verify:${getAuth(req).userId}`,
+    }),
+    async (req, res) => {
+      const sent = await service.resendVerification(getAuth(req).userId);
+      res.status(202).json({ data: { sent } });
     },
   );
 

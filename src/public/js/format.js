@@ -47,6 +47,19 @@ export const initials = (name) =>
     .map((part) => part[0].toUpperCase())
     .join('');
 
+/**
+ * The consent timestamp to send when a contact is edited, or undefined when the date was not
+ * changed (so an unrelated edit never touches it). The form only has a date, so a changed date is
+ * sent as noon UTC, but never later than now: sending noon for today before noon UTC was rejected
+ * by the server as "dated in the future", which made any edit of a same-day contact fail in the
+ * morning (found because CI ran before noon UTC).
+ */
+export function consentChange(originalIso, dateValue, now = new Date()) {
+  if (!dateValue || dateValue === originalIso.slice(0, 10)) return undefined;
+  const chosen = new Date(`${dateValue}T12:00:00Z`);
+  return (chosen.getTime() > now.getTime() ? now : chosen).toISOString();
+}
+
 export const CONSENT_LABELS = {
   requested_contact: 'Asked us to get in touch',
   existing_customer: 'Existing customer',

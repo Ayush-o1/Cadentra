@@ -96,6 +96,85 @@ describe('ResendProvider', () => {
     expect(error.retryable).toBe(true);
   });
 
+  it('treats a bad key or unverified domain as permanent', async () => {
+    for (const [status, name] of [
+      [401, 'restricted_api_key'],
+      [403, 'validation_error'],
+    ] as const) {
+      const error = await failureOf(
+        providerWith(json({ name, message: 'nope' }, { status })).provider.send(email, 'k'),
+      );
+      expect(error.retryable, `${status} ${name}`).toBe(false);
+      expect(error.quota).toBe(false);
+    }
+  });
+
+  it('waits until the daily quota resets without blaming the message', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-17T20:30:00Z'), toFake: ['Date'] });
+    try {
+      const error = await failureOf(
+        providerWith(
+          json({ name: 'daily_quota_exceeded', message: 'quota' }, { status: 429 }),
+        ).provider.send(email, 'k'),
+      );
+      expect(error).toMatchObject({ retryable: true, quota: true });
+      // 3.5 hours to midnight UTC plus a minute of slack.
+      expect(error.retryAfterMs).toBe(3.5 * 3_600_000 + 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits hours for a monthly quota', async () => {
+    const error = await failureOf(
+      providerWith(
+        json({ name: 'monthly_quota_exceeded', message: 'quota' }, { status: 429 }),
+      ).provider.send(email, 'k'),
+    );
+    expect(error).toMatchObject({ retryable: true, quota: true, retryAfterMs: 6 * 3_600_000 });
+  });
+
+  it('does not retry an idempotency-key conflict that could duplicate a sent email', async () => {
+    const error = await failureOf(
+      providerWith(
+        json({ name: 'invalid_idempotent_request', message: 'body modified' }, { status: 409 }),
+      ).provider.send(email, 'k'),
+    );
+    expect(error.retryable).toBe(false);
+    expect(error.message).toContain('check the Resend logs');
+  });
+
+  it('retries while another request holds the same idempotency key', async () => {
+    const error = await failureOf(
+      providerWith(
+        json({ name: 'concurrent_idempotent_requests', message: 'busy' }, { status: 409 }),
+      ).provider.send(email, 'k'),
+    );
+    expect(error.retryable).toBe(true);
+    expect(error.quota).toBe(false);
+  });
+
+  it('retries a timeout and survives a non-JSON error body', async () => {
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    });
+    expect((await failureOf(providerWith(timeout).provider.send(email, 'k'))).retryable).toBe(true);
+    const html = await failureOf(
+      providerWith(new Response('<html>Bad gateway</html>', { status: 502 })).provider.send(
+        email,
+        'k',
+      ),
+    );
+    expect(html.retryable).toBe(true);
+    expect(html.message).toContain('502');
+  });
+
+  it('never puts the API key in an error message', async () => {
+    const { provider } = providerWith(json({ message: 'bad' }, { status: 401 }));
+    const error = await failureOf(provider.send(email, 'k'));
+    expect(error.message).not.toContain('re_test_key');
+  });
+
   it('omits reply_to when there is none', async () => {
     const { provider, fetchMock } = providerWith(json({ id: 'x' }));
     await provider.send({ ...email, replyTo: undefined }, 'k');

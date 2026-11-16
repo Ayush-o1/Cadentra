@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { debounce, h, mount } from '../dom.js';
+import { debounce, h, mount, latestOnly } from '../dom.js';
 import { icon } from '../icons.js';
 import { formatDate } from '../format.js';
 import { suppressionBadge } from '../ui/badge.js';
@@ -73,18 +73,20 @@ export async function suppressionsPage({ container, isCurrent }) {
     }),
   );
 
+  const begin = latestOnly();
   async function load() {
+    const isLatest = begin();
     try {
       const { data, meta } = await api.get('/suppressions', {
         search: view.search,
         cursor: view.cursors[view.index],
         limit: 25,
       });
-      if (!isCurrent()) return;
+      if (!isCurrent() || !isLatest()) return;
       view.next = meta.nextCursor;
       draw(data);
     } catch (error) {
-      if (isCurrent())
+      if (isCurrent() && isLatest())
         mount(
           card,
           errorState(error, () => void load()),

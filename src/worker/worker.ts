@@ -13,7 +13,8 @@ const LEASE_MS = 5 * 60 * 1000;
 const MAX_BATCHES_PER_RUN = 50;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const WEBHOOK_PAYLOAD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const SHUTDOWN_WAIT_MS = 20_000;
+const UNMATCHED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const SHUTDOWN_WAIT_MS = 10_000;
 
 export type RunSummary = Record<Outcome | 'claimed', number>;
 
@@ -63,7 +64,19 @@ export function createWorker(deps: WorkerDeps): Worker {
       },
       data: { payload: undefined },
     });
-    logger.debug({ sessions: sessions.count, payloads: payloads.count }, 'Housekeeping done');
+    // Events for messages we never created (such as system email sent through the same provider
+    // account) can never be applied. Keep them a week for late reconciliation, then drop them.
+    const unmatched = await db.webhookEvent.deleteMany({
+      where: {
+        status: 'unmatched',
+        receivedAt: { lt: new Date(now.getTime() - UNMATCHED_RETENTION_MS) },
+      },
+    });
+    await db.authToken.deleteMany({ where: { expiresAt: { lt: now } } });
+    logger.debug(
+      { sessions: sessions.count, payloads: payloads.count, unmatched: unmatched.count },
+      'Housekeeping done',
+    );
   }
 
   async function runOnce(): Promise<RunSummary> {
@@ -78,6 +91,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         limit: config.worker.concurrency,
         workerId,
         leaseMs: LEASE_MS,
+        mode: config.worker.claimMode,
       });
       if (claimed.length === 0) break;
       summary.claimed += claimed.length;

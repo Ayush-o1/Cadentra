@@ -463,6 +463,7 @@ describe('tenant isolation', () => {
       () => b.agent.delete(`/api/v1/campaigns/${campaign.id}`),
       () => b.agent.post(`/api/v1/campaigns/${campaign.id}/launch`).send({ version: 1 }),
       () => b.agent.post(`/api/v1/campaigns/${campaign.id}/pause`),
+      () => b.agent.post(`/api/v1/campaigns/${campaign.id}/resume`).send({}),
       () => b.agent.post(`/api/v1/campaigns/${campaign.id}/cancel`),
       () => b.agent.post(`/api/v1/campaigns/${campaign.id}/preview`).send({ position: 1 }),
       () => b.agent.get(`/api/v1/campaigns/${campaign.id}/messages`),

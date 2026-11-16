@@ -63,9 +63,15 @@ export async function campaignDetailPage({ container, params, navigate, isCurren
   const summary = h('div', { class: 'stack' });
   const messagesCard = h('section', { class: 'card', 'aria-labelledby': 'messages-title' });
 
+  // Bumped by every user action. A background poll that started before an action must not
+  // overwrite the newer state it produced when its (older) response arrives late.
+  let revision = 0;
+
   async function act(request, { done }) {
+    revision += 1;
     try {
       const { data } = await request();
+      revision += 1;
       campaign = data;
       toast(done);
       await refreshMessages();
@@ -417,10 +423,12 @@ export async function campaignDetailPage({ container, params, navigate, isCurren
   const timer = setInterval(async () => {
     if (document.hidden || ['completed', 'cancelled'].includes(campaign.status)) return;
     try {
+      const startedAt = revision;
       const { data } = await api.get(`/campaigns/${id}`);
-      if (!isCurrent()) return;
+      if (!isCurrent() || revision !== startedAt) return;
       campaign = data;
       await refreshMessages();
+      if (revision !== startedAt) return;
       draw();
     } catch {
       /* keep the last good view; the next poll retries */

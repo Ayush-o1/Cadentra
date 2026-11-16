@@ -15,10 +15,14 @@ import {
 } from './campaigns.schemas.js';
 import { createCampaignsService } from './campaigns.service.js';
 
-export function createCampaignsRouter(db: Db, requireAuth: RequestHandler): Router {
+export function createCampaignsRouter(
+  db: Db,
+  requireAuth: RequestHandler,
+  options: { requireVerifiedEmail: boolean },
+): Router {
   const router = Router();
   const service = createCampaignsService(db);
-  const actions = createCampaignActions(db, service.detail);
+  const actions = createCampaignActions(db, service.detail, options);
   router.use('/campaigns', requireAuth);
 
   const campaignId = (value: unknown) => parseId(value, 'Campaign');

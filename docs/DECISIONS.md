@@ -59,7 +59,7 @@ Each entry records the alternatives and the trade-off. Entries D-01 to D-16 were
 **Trade-off.** More hand-written logic and polling latency (seconds), in exchange for transactional consistency, one fewer service, and a design that exercises transactions and locking. Message processing is a plain function, so a later move to BullMQ is contained.
 **Revisit if.** Sustained volume exceeds what polling a single table handles, which is far beyond this project.
 
-**Outcome.** Worked as designed, and the transactional benefit was real: the next step's message is created in the same transaction that records the send. It needed two non-obvious fixes to be correct under concurrency (D-17, D-18). `SKIP LOCKED` is confirmed on MySQL 8.4; it is unconfirmed on TiDB.
+**Outcome.** Worked as designed, and the transactional benefit was real: the next step's message is created in the same transaction that records the send. It needed two non-obvious fixes to be correct under concurrency (D-17, D-18). `SKIP LOCKED` is confirmed on MySQL 8.4. TiDB's documentation lists it as unsupported, which led to a second claim mode (D-27).
 
 ## D-06: Resend behind one small interface
 
@@ -181,3 +181,28 @@ Each entry records the alternatives and the trade-off. Entries D-01 to D-16 were
 
 **Decision.** `GET /auth/session` returns 200 with `null` when signed out. `/auth/me` keeps returning 401.
 **Why.** Every page load of a signed-out visitor was logging a 401 as a console error in the browser, which is noise that hides real problems.
+
+## D-27: A second queue claim mode for databases without SKIP LOCKED
+
+**Context.** The free hosting route uses TiDB Cloud Starter. TiDB's compatibility page lists `SKIP LOCKED` as unsupported, so the default claim cannot run there. See [TIDB_COMPATIBILITY.md](TIDB_COMPATIBILITY.md).
+**Decision.** `QUEUE_CLAIM_MODE=conditional-update` reads candidate ids without locks and claims each with one conditional `UPDATE` (still due, campaign still running); the affected-row count says who won. The default stays `skip-locked`.
+**Alternatives.** Drop MySQL's `SKIP LOCKED` and use only the conditional update everywhere (simpler, but wastes round trips under contention for no benefit on MySQL); a claim-token column with `UPDATE … ORDER BY … LIMIT` (one statement, but needs a schema change and interacts badly with the lease check); advisory locks (cluster-wide, but adds a failure mode).
+**Trade-off.** Two code paths to keep correct, and under heavy contention more wasted statements. Both paths are run through the same tests on MySQL, and the duplicate-send guards (lease, unique recipient and step, provider idempotency key) do not depend on the mode.
+**Not verified.** Behaviour on a real TiDB cluster. The verification procedure is written down.
+
+## D-28: Password reset and email confirmation
+
+**Decision.** One `auth_tokens` table (hash only, purpose, expiry, used-at). Tokens are 256-bit random, single use (spent with a conditional update in the same transaction that changes the password), expire after 1 hour (reset) or 24 hours (confirmation), and travel in the URL fragment so they never reach server logs. The forgot-password endpoint returns the same answer for any address, and sends after responding. A reset signs out every session and also confirms the address (the user proved they read that mailbox).
+**Confirmation is not enforced by default.** `REQUIRE_VERIFIED_EMAIL=true` makes it a launch blocker. Without a verified sending domain the provider can only deliver to the account owner's address, so enforcing it by default would lock out every other sign-up.
+**Alternatives.** Stateless signed tokens (cannot be revoked or made single use without storing something anyway); tokens in the query string (simpler, but leak into logs and `Referer`); verifying before any sign-in (blocks the demo flow).
+**Not built.** Changing the account email, multi-factor authentication, team invitations. Invitations were left out on purpose: the single-owner workspace is complete as a product, and a half-built invitation flow would be worse than none.
+
+## D-29: Provider error handling is explicit about quota and idempotency conflicts
+
+**Decision.** Resend's documented error names drive the classification: `daily_quota_exceeded` and `monthly_quota_exceeded` reschedule the message without counting an attempt (daily waits for 00:00 UTC); `invalid_idempotent_request` is permanent, because the same key with a changed body means an earlier attempt may already have been sent, and retrying under a new key could duplicate the email; `concurrent_idempotent_requests` is retried.
+**Why.** Treating a quota like any transient failure would have failed messages after five attempts for a reason unrelated to them, and treating the conflict as transient would have retried something that can never succeed.
+
+## D-30: `TRUST_PROXY` is a hop count
+
+**Decision.** `TRUST_PROXY` takes `false` or a number of proxies. `true` is accepted and means one.
+**Why.** Express's `trust proxy: true` believes the left-most `X-Forwarded-For` entry, which a client can set itself. That would let anyone choose their own rate-limit bucket. A hop count takes the address the nearest trusted proxy saw.

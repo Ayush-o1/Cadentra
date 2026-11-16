@@ -10,20 +10,33 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Three proxies sit in front of the app on Render (measured live: with 1 the app saw an internal
+      # 10.x address, with 2 a Cloudflare address; with 3 it sees the client and ignores a forged
+      # X-Forwarded-For).
       - key: TRUST_PROXY
-        value: 'true'
+        value: '3'
       - key: EMAIL_PROVIDER
         value: resend
       - key: RUN_WORKER
         value: 'true'
-      - key: APP_URL
-        sync: false
+      # TiDB (the free MySQL-compatible database) has no SKIP LOCKED. Use 'skip-locked' on real MySQL.
+      - key: QUEUE_CLAIM_MODE
+        value: conditional-update
+      # Polling less often saves the free database's request-unit allowance.
+      - key: WORKER_POLL_MS
+        value: '10000'
+      - key: REQUIRE_VERIFIED_EMAIL
+        value: 'false'
+      # APP_URL is not set: the app uses RENDER_EXTERNAL_URL, which Render provides.
       - key: DATABASE_URL
         sync: false
       - key: APP_SECRET
         generateValue: true
       - key: TICK_TOKEN
         generateValue: true
+      # Sender of password-reset and verification mail, for example "Cadentra <onboarding@resend.dev>"
+      - key: SYSTEM_EMAIL_FROM
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_WEBHOOK_SECRET

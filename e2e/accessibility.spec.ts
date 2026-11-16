@@ -18,7 +18,14 @@ async function scan(page: Page) {
 }
 
 test('signed-out pages have no WCAG A/AA violations', async ({ page }) => {
-  for (const path of ['/login', '/register', '/u/1.not-valid']) {
+  for (const path of [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/verify-email',
+    '/u/1.not-valid',
+  ]) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await scan(page), path).toEqual([]);

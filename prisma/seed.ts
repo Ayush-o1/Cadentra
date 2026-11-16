@@ -122,6 +122,7 @@ async function main() {
       email: DEMO_EMAIL,
       name: 'Priya Raman',
       passwordHash: await hashPassword(DEMO_PASSWORD),
+      emailVerifiedAt: new Date(),
     },
   });
   const workspace = await db.workspace.create({

@@ -12,21 +12,40 @@ const envSchema = z
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     APP_URL: z.url().default('http://localhost:3000'),
     APP_SECRET: z.string().min(32, 'APP_SECRET must be at least 32 characters'),
-    TRUST_PROXY: booleanFromString.default(false),
+    // How many reverse proxies sit in front of the app: `false`, or a count such as `1`.
+    // `true` is accepted as 1. Never "trust everything": a client could then forge X-Forwarded-For
+    // and dodge the rate limits.
+    TRUST_PROXY: z
+      .string()
+      .regex(/^(true|false|\d{1,2})$/, 'must be false, true (one proxy) or a number of proxies')
+      .default('false')
+      .transform((value): false | number =>
+        value === 'false' ? false : value === 'true' ? 1 : Number(value),
+      ),
 
     RUN_WORKER: booleanFromString.default(true),
     WORKER_POLL_MS: z.coerce.number().int().min(50).default(5000),
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
     WORKER_MAX_SENDS_PER_SECOND: z.coerce.number().min(0.1).max(10).default(5),
     TICK_TOKEN: z.string().min(24).optional(),
+    QUEUE_CLAIM_MODE: z.enum(['skip-locked', 'conditional-update']).default('skip-locked'),
 
     EMAIL_PROVIDER: z.enum(['fake', 'resend']).default('fake'),
     RESEND_API_KEY: z.string().min(1).optional(),
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+    // Sender of Cadentra's own emails (password reset, address verification), not campaigns.
+    SYSTEM_EMAIL_FROM: z
+      .string()
+      .min(3)
+      .max(200)
+      .regex(/^[^\r\n]+$/, 'must be a single line')
+      .optional(),
+    // When true, launching a campaign requires the account's email address to be verified.
+    REQUIRE_VERIFIED_EMAIL: booleanFromString.default(false),
   })
   .superRefine((env, ctx) => {
     if (env.EMAIL_PROVIDER === 'resend') {
-      for (const key of ['RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET'] as const) {
+      for (const key of ['RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET', 'SYSTEM_EMAIL_FROM'] as const) {
         if (!env[key]) {
           ctx.addIssue({
             code: 'custom',
@@ -51,6 +70,9 @@ export type RateLimits = {
   loginPerIp: RateLimit;
   loginPerAccount: RateLimit;
   register: RateLimit;
+  passwordResetPerIp: RateLimit;
+  passwordResetPerAccount: RateLimit;
+  verificationResend: RateLimit;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -63,7 +85,7 @@ export type Config = {
   databaseUrl: string;
   appUrl: string;
   appSecret: string;
-  trustProxy: boolean;
+  trustProxy: false | number;
   session: {
     cookieName: string;
     secureCookie: boolean;
@@ -76,13 +98,16 @@ export type Config = {
     pollMs: number;
     concurrency: number;
     maxSendsPerSecond: number;
+    claimMode: 'skip-locked' | 'conditional-update';
     tickToken: string | undefined;
   };
   email: {
     provider: 'fake' | 'resend';
     resendApiKey: string | undefined;
     resendWebhookSecret: string | undefined;
+    systemFrom: string;
   };
+  auth: { requireVerifiedEmail: boolean };
 };
 
 export class ConfigError extends Error {
@@ -94,7 +119,16 @@ export class ConfigError extends Error {
   }
 }
 
-export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
+export function loadConfig(raw: NodeJS.ProcessEnv = process.env): Config {
+  // `KEY=` in a .env file or a blank field in a hosting dashboard means "not set", not "empty".
+  const source: Record<string, string | undefined> = Object.fromEntries(
+    Object.entries(raw).filter(([, value]) => value !== ''),
+  );
+  // Render tells every web service its own public address. Using it when APP_URL is not set means
+  // the address cannot be misconfigured, and it is not needed before the service exists.
+  if (source['APP_URL'] === undefined && source['RENDER_EXTERNAL_URL'] !== undefined) {
+    source['APP_URL'] = source['RENDER_EXTERNAL_URL'];
+  }
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new ConfigError(
@@ -125,13 +159,16 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       pollMs: env.WORKER_POLL_MS,
       concurrency: env.WORKER_CONCURRENCY,
       maxSendsPerSecond: env.WORKER_MAX_SENDS_PER_SECOND,
+      claimMode: env.QUEUE_CLAIM_MODE,
       tickToken: env.TICK_TOKEN,
     },
     email: {
       provider: env.EMAIL_PROVIDER,
       resendApiKey: env.RESEND_API_KEY,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET,
+      systemFrom: env.SYSTEM_EMAIL_FROM ?? 'Cadentra <no-reply@cadentra.invalid>',
     },
+    auth: { requireVerifiedEmail: env.REQUIRE_VERIFIED_EMAIL },
   };
 }
 
@@ -139,12 +176,23 @@ function defaultRateLimits(relaxed: boolean): RateLimits {
   const minutes = (count: number) => count * 60 * 1000;
   if (relaxed) {
     const generous = { windowMs: minutes(15), limit: 100_000 };
-    return { api: generous, loginPerIp: generous, loginPerAccount: generous, register: generous };
+    return {
+      api: generous,
+      loginPerIp: generous,
+      loginPerAccount: generous,
+      register: generous,
+      passwordResetPerIp: generous,
+      passwordResetPerAccount: generous,
+      verificationResend: generous,
+    };
   }
   return {
     api: { windowMs: minutes(1), limit: 600 },
     loginPerIp: { windowMs: minutes(15), limit: 30 },
     loginPerAccount: { windowMs: minutes(15), limit: 5 },
     register: { windowMs: minutes(60), limit: 10 },
+    passwordResetPerIp: { windowMs: minutes(60), limit: 10 },
+    passwordResetPerAccount: { windowMs: minutes(60), limit: 3 },
+    verificationResend: { windowMs: minutes(60), limit: 5 },
   };
 }

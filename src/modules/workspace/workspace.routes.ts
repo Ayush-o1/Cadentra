@@ -11,7 +11,7 @@ export function createWorkspaceRouter(config: Config, db: Db, requireAuth: Reque
 
   router.get('/workspace', requireAuth, async (req, res) => {
     const auth = getAuth(req);
-    res.json({ data: await service.describe(auth.workspaceId, auth.role) });
+    res.json({ data: await service.describe(auth.workspaceId, auth.role, auth.userId) });
   });
 
   router.patch('/workspace', requireAuth, requireOwner, async (req, res) => {

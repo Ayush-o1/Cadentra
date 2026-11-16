@@ -249,6 +249,21 @@ async function handleFailure(
   error: ProviderError,
   now: Date,
 ): Promise<Outcome> {
+  if (error.quota && error.retryable) {
+    // Out of provider quota: wait for it to reset without using up one of the message's attempts.
+    const { count } = await deps.db.emailMessage.updateMany({
+      where: guard,
+      data: {
+        status: 'scheduled',
+        runAt: new Date(now.getTime() + (error.retryAfterMs ?? 60 * 60 * 1000)),
+        attempts: { decrement: 1 },
+        lastError: error.message.slice(0, 500),
+        lockedBy: null,
+        lockedUntil: null,
+      },
+    });
+    return count === 1 ? 'rescheduled' : 'lease_lost';
+  }
   const decision = decideRetry({
     retryable: error.retryable,
     attempts,

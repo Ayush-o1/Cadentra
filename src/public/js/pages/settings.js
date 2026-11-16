@@ -47,6 +47,34 @@ function section(title, description, ...content) {
   );
 }
 
+function verificationNotice() {
+  const send = h(
+    'button',
+    { type: 'button', class: 'btn btn-secondary btn-sm' },
+    'Send a new link',
+  );
+  send.addEventListener('click', async () => {
+    try {
+      await withBusy(send, () => api.post('/account/verification-email'));
+      toast('Confirmation email sent. Check your inbox.');
+    } catch (error) {
+      toastError(error);
+    }
+  });
+  return h(
+    'div',
+    { class: 'alert alert-warning', role: 'status' },
+    icon('alert'),
+    h(
+      'div',
+      { class: 'alert-body' },
+      h('strong', null, 'Your email address is not confirmed yet'),
+      'We sent a link when you signed up. Some deployments require it before a campaign can launch.',
+      h('div', null, send),
+    ),
+  );
+}
+
 function profileTab() {
   const name = textField({ label: 'Name', name: 'name', value: state.user.name, required: true });
   const email = textField({
@@ -56,12 +84,14 @@ function profileTab() {
     disabled: true,
     help: 'Your sign-in address. It cannot be changed yet.',
   });
+  const verification = state.user.emailVerified ? null : verificationNotice();
   const submit = h('button', { type: 'submit', class: 'btn btn-primary' }, 'Save changes');
   const form = h(
     'form',
     { novalidate: true },
     name.el,
     email.el,
+    verification,
     h('div', { class: 'form-actions' }, submit),
   );
   form.addEventListener('submit', async (event) => {

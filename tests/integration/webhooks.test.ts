@@ -13,6 +13,7 @@ const ctx = buildTestApp({
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 're_test',
   RESEND_WEBHOOK_SECRET: WEBHOOK_SECRET,
+  SYSTEM_EMAIL_FROM: 'Cadentra <system@example.org>',
 });
 const { app, db } = ctx;
 
@@ -197,6 +198,33 @@ describe('applying events', () => {
     const suppression = await db.suppression.findFirstOrThrow();
     expect(suppression.reason).toBe('complaint');
     expect((await agent.delete(`/api/v1/suppressions/${suppression.id}`)).status).toBe(409);
+  });
+
+  it('gives a redelivered event another chance if the first attempt stored it but could not apply it', async () => {
+    const { messages } = await sentCampaign(1);
+    const message = messages[0]!;
+    // What a crash between storing the event and applying it leaves behind.
+    await db.webhookEvent.create({
+      data: {
+        provider: 'resend',
+        providerEventId: 'msg_evt_stuck',
+        eventType: 'email.delivered',
+        providerMessageId: message.providerMessageId,
+        status: 'unmatched',
+      },
+    });
+    expect(await statusOf(message.id)).toBe('accepted');
+
+    const retry = await deliver('email.delivered', message.providerMessageId!, {
+      id: 'msg_evt_stuck',
+    });
+    expect((retry.body as { status: string }).status).toBe('applied');
+    expect(await statusOf(message.id)).toBe('delivered');
+
+    const again = await deliver('email.delivered', message.providerMessageId!, {
+      id: 'msg_evt_stuck',
+    });
+    expect((again.body as { status: string }).status).toBe('duplicate');
   });
 
   it('records a delayed delivery as a note without changing the status', async () => {

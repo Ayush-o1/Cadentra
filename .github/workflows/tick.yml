@@ -1,13 +1,16 @@
 # Optional. For hosts that put idle web services to sleep (for example the free tier on Render), the
-# in-process worker stops while the service sleeps. This job wakes the service every five minutes and
-# asks it to send whatever is due. It needs two repository secrets and does nothing without them:
+# in-process worker stops while the service sleeps. This job wakes the service once an hour and asks
+# it to send whatever is due. It is hourly on purpose: Render's free tier gives each workspace 750
+# instance hours a month SHARED by all its free services, and a service pinged every five minutes
+# never sleeps (about 744 hours), which would use the whole allowance and get every free service in
+# the workspace suspended. Hourly keeps this one awake roughly a quarter of the time. It needs two repository secrets and does nothing without them:
 #   APP_URL     https://your-app.example.org
 #   TICK_TOKEN  the same value as the TICK_TOKEN environment variable on the server
 name: Wake and tick
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions: {}

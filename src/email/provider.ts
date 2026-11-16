@@ -16,9 +16,18 @@ export class ProviderError extends Error {
     message: string,
     public readonly retryable: boolean,
     public readonly retryAfterMs?: number,
+    /**
+     * `quota`: the provider's sending quota is used up. Waiting is the only cure, and it says
+     * nothing about this particular message, so the attempt is not counted against it.
+     */
+    public readonly options: { quota?: boolean; code?: string } = {},
   ) {
     super(message);
     this.name = 'ProviderError';
+  }
+
+  get quota(): boolean {
+    return this.options.quota === true;
   }
 }
 

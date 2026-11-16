@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, mount } from '../dom.js';
+import { h, mount, latestOnly } from '../dom.js';
 import { formatNumber, formatPercent } from '../format.js';
 import { campaignBadge } from '../ui/badge.js';
 import { dailyChart } from '../ui/chart.js';
@@ -67,7 +67,9 @@ export async function analyticsPage({ container, query, isCurrent }) {
     h('div', { class: 'field' }, h('label', { class: 'label' }, 'To'), to),
   );
 
+  const begin = latestOnly();
   async function load() {
+    const isLatest = begin();
     filters.range = range.input.value;
     filters.campaignId = campaign.input.value;
     custom.hidden = filters.range !== 'custom';
@@ -90,9 +92,9 @@ export async function analyticsPage({ container, query, isCurrent }) {
     mount(results, loadingBlock('Loading analytics'));
     try {
       const { data } = await api.get('/analytics', params);
-      if (isCurrent()) draw(data);
+      if (isCurrent() && isLatest()) draw(data);
     } catch (error) {
-      if (isCurrent())
+      if (isCurrent() && isLatest())
         mount(
           results,
           error.status === 422

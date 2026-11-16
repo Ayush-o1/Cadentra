@@ -8,6 +8,11 @@ import { menuButton } from './ui/menu.js';
 import { toast } from './ui/toast.js';
 import { errorState } from './ui/states.js';
 import { loginPage, registerPage } from './pages/auth.js';
+import {
+  forgotPasswordPage,
+  resetPasswordPage,
+  verifyEmailPage,
+} from './pages/account-recovery.js';
 import { dashboardPage } from './pages/dashboard.js';
 import { contactsPage } from './pages/contacts.js';
 import { listDetailPage, listsPage } from './pages/lists.js';
@@ -52,6 +57,27 @@ defineRoutes([
     title: 'Create your account',
     bare: true,
     guestOnly: true,
+  },
+  {
+    path: '/forgot-password',
+    page: forgotPasswordPage,
+    title: 'Reset password',
+    bare: true,
+    guestOnly: true,
+  },
+  {
+    path: '/reset-password',
+    page: resetPasswordPage,
+    title: 'Choose a new password',
+    bare: true,
+    public: true,
+  },
+  {
+    path: '/verify-email',
+    page: verifyEmailPage,
+    title: 'Confirm email',
+    bare: true,
+    public: true,
   },
   { path: '/u/:token', page: unsubscribePage, title: 'Unsubscribe', bare: true, public: true },
 ]);
